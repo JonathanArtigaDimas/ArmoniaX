@@ -1,15 +1,4 @@
-const ESCALA_EN = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-const ESCALA_ES = ['Do', 'Do#', 'Re', 'Re#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'];
-
-const NOTE_MAP_ES_TO_EN: Record<string, number> = {
-  'do': 0, 'do#': 1, 're': 2, 're#': 3, 'mi': 4,
-  'fa': 5, 'fa#': 6, 'sol': 7, 'sol#': 8, 'la': 9, 'la#': 10, 'si': 11,
-};
-
-const NOTE_MAP_EN_TO_ES: Record<string, number> = {
-  'c': 0, 'c#': 1, 'd': 2, 'd#': 3, 'e': 4,
-  'f': 5, 'f#': 6, 'g': 7, 'g#': 8, 'a': 9, 'a#': 10, 'b': 11,
-};
+import {transposeChord} from './chordTransposer';
 
 const CHORD_IN_BRACKET = /\[([^\]]+)\]/g;
 
@@ -25,47 +14,6 @@ export type ChordProParsedLine =
   | {type: 'metadata'; key: string; value: string; raw: string}
   | {type: 'chordpro'; lyricLine: string; chordPositions: {chord: string; position: number}[]; raw: string}
   | {type: 'plain'; text: string; raw: string};
-
-function parseChordNote(chord: string): {
-  baseIndex: number;
-  suffix: string;
-} | null {
-  const normalized = chord.trim().toLowerCase();
-
-  const sortedEs = Object.entries(NOTE_MAP_ES_TO_EN)
-    .sort((a, b) => b[0].length - a[0].length);
-  for (const [note, idx] of sortedEs) {
-    if (normalized.startsWith(note)) {
-      const suffix = chord.trim().slice(note.length);
-      return {baseIndex: idx, suffix};
-    }
-  }
-
-  const sortedEn = Object.entries(NOTE_MAP_EN_TO_ES)
-    .sort((a, b) => b[0].length - a[0].length);
-  for (const [note, idx] of sortedEn) {
-    if (normalized.startsWith(note)) {
-      const suffix = chord.trim().slice(note.length);
-      return {baseIndex: idx, suffix};
-    }
-  }
-
-  return null;
-}
-
-export function transposeChord(chord: string, semitones: number, preferSpanish: boolean): string {
-  const parsed = parseChordNote(chord);
-  if (!parsed) return chord;
-
-  const newIndex = ((parsed.baseIndex + semitones) % 12 + 12) % 12;
-  const scale = preferSpanish ? ESCALA_ES : ESCALA_EN;
-  const newNote = scale[newIndex];
-
-  if (preferSpanish) {
-    return newNote.charAt(0).toUpperCase() + newNote.slice(1).toLowerCase() + parsed.suffix;
-  }
-  return newNote + parsed.suffix;
-}
 
 function hasSpanishChords(text: string): boolean {
   const lower = text.toLowerCase();

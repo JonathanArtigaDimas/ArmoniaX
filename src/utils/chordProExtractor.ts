@@ -1,17 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {ChordProAlignedLine, extractChordProAligned} from './PDFScanner';
+import {normalize} from './textUtils';
 
 const STORAGE_KEY = 'extracted_chord_pros';
 
 export const extractedCache: Record<string, string> = {};
-
-function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim();
-}
 
 export function buildChordProFromAligned(
   lines: ChordProAlignedLine[],
@@ -112,23 +105,6 @@ export async function removeExtractedChordPro(
     }
     delete extractedCache[key];
   } catch {}
-}
-
-export async function hasExtractedChordPro(
-  songName: string,
-): Promise<boolean> {
-  const key = normalize(songName);
-  if (extractedCache[key]) {
-    return true;
-  }
-  try {
-    const json = await AsyncStorage.getItem(STORAGE_KEY);
-    if (json) {
-      const data = JSON.parse(json) as Record<string, string>;
-      return !!data[key];
-    }
-  } catch {}
-  return false;
 }
 
 export async function loadAllExtractedChordPros(): Promise<void> {

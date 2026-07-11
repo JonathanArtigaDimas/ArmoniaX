@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {normalize} from './textUtils';
 
 const STORAGE_KEY = 'saved_capo_suggestions';
 
@@ -6,14 +7,6 @@ export interface CapoSuggestion {
   name: string;
   offset: number;
   capo: number;
-}
-
-function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim();
 }
 
 export async function loadCapoSuggestions(songName: string): Promise<CapoSuggestion[]> {

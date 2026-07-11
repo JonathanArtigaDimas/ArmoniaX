@@ -2,6 +2,7 @@ import React from 'react';
 import {View, Text, StyleSheet} from 'react-native';
 import {Note, getNoteName} from '../constants/instruments';
 import {COLORS, FONTS} from '../constants/theme';
+import {getCentsColor} from '../utils/tunerUtils';
 
 interface NoteDisplayProps {
   note: Note;
@@ -18,14 +19,6 @@ const getTuningStatus = (cents: number, isTuned?: boolean): string => {
   return 'destensar';
 };
 
-const getStatusColor = (cents: number, isTuned?: boolean, tolerance: number = 10): string => {
-  if (isTuned) {return '#00FF88';}
-  const abs = Math.abs(cents);
-  if (abs <= tolerance) {return COLORS.accent;}
-  if (abs <= tolerance * 2) {return COLORS.warning;}
-  return COLORS.error;
-};
-
 export const NoteDisplay: React.FC<NoteDisplayProps> = ({
   note,
   isTuned,
@@ -37,7 +30,7 @@ export const NoteDisplay: React.FC<NoteDisplayProps> = ({
   const freqColor = isTuned ? '#00FF88' : COLORS.textSecondary;
   const displayHz = detectedHz && detectedHz > 0 ? detectedHz.toFixed(1) : note.frequency.toFixed(2);
   const status = getTuningStatus(cents, isTuned);
-  const statusColor = getStatusColor(cents, isTuned, tolerance);
+  const statusColor = getCentsColor(cents, isTuned, tolerance);
 
   return (
     <View style={styles.container}>

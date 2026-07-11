@@ -8,25 +8,9 @@ const NORMAL_TICK_PATH = `${CACHE_DIR}/tick_normal.wav`;
 const ACCENT_TICK_PATH = `${CACHE_DIR}/tick_accent.wav`;
 const TUNED_PATH = `${CACHE_DIR}/tuned.wav`;
 
-function generateWavData(
-  config: {
-    frequency: number;
-    durationMs: number;
-    volume?: number;
-    attackMs?: number;
-    decayMs?: number;
-    sustainLevel?: number;
-    harmonics?: number[];
-  },
-  sampleRate: number = 44100,
-): ArrayBuffer {
-  const {frequency, durationMs, volume = 0.3, attackMs = 2, decayMs = 15, sustainLevel = 0.3, harmonics = [1]} = config;
-  const numSamples = Math.floor(sampleRate * (durationMs / 1000));
-  const bytesPerSample = 2;
-  const dataSize = numSamples * bytesPerSample;
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
+declare const btoa: (input: string) => string;
 
+function writeWavHeader(view: DataView, dataSize: number, sampleRate: number): void {
   const writeString = (offset: number, str: string) => {
     for (let i = 0; i < str.length; i++) {
       view.setUint8(offset + i, str.charCodeAt(i));
@@ -41,11 +25,32 @@ function generateWavData(
   view.setUint16(20, 1, true);
   view.setUint16(22, 1, true);
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * bytesPerSample, true);
-  view.setUint16(32, bytesPerSample, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
   view.setUint16(34, 16, true);
   writeString(36, 'data');
   view.setUint32(40, dataSize, true);
+}
+
+function generateWavData(
+  config: {
+    frequency: number;
+    durationMs: number;
+    volume?: number;
+    attackMs?: number;
+    decayMs?: number;
+    sustainLevel?: number;
+    harmonics?: number[];
+  },
+  sampleRate: number = 44100,
+): ArrayBuffer {
+  const {frequency, durationMs, volume = 0.3, attackMs = 2, decayMs = 15, sustainLevel = 0.3, harmonics = [1]} = config;
+  const numSamples = Math.floor(sampleRate * (durationMs / 1000));
+  const dataSize = numSamples * 2;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  writeWavHeader(view, dataSize, sampleRate);
 
   const amplitude = volume * 32767;
   const attackSamples = Math.floor(sampleRate * (attackMs / 1000));
@@ -91,30 +96,11 @@ function generateChimeWav(
 ): ArrayBuffer {
   const totalDurationMs = noteDurationMs * frequencies.length + 200;
   const numSamples = Math.floor(sampleRate * (totalDurationMs / 1000));
-  const bytesPerSample = 2;
-  const dataSize = numSamples * bytesPerSample;
+  const dataSize = numSamples * 2;
   const buffer = new ArrayBuffer(44 + dataSize);
   const view = new DataView(buffer);
 
-  const writeString = (offset: number, str: string) => {
-    for (let i = 0; i < str.length; i++) {
-      view.setUint8(offset + i, str.charCodeAt(i));
-    }
-  };
-
-  writeString(0, 'RIFF');
-  view.setUint32(4, 36 + dataSize, true);
-  writeString(8, 'WAVE');
-  writeString(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * bytesPerSample, true);
-  view.setUint16(32, bytesPerSample, true);
-  view.setUint16(34, 16, true);
-  writeString(36, 'data');
-  view.setUint32(40, dataSize, true);
+  writeWavHeader(view, dataSize, sampleRate);
 
   const amplitude = 0.25 * 32767;
 
@@ -125,7 +111,6 @@ function generateChimeWav(
       const noteEnd = Math.floor(sampleRate * ((f + 1) * noteDurationMs / 1000 + 200));
       if (i >= noteStart && i < noteEnd) {
         const noteT = (i - noteStart) / sampleRate;
-        const noteDuration = noteDurationMs / 1000;
         const attack = Math.min(1, noteT / 0.005);
         const decay = Math.exp(-noteT * 8);
         const noteSample = Math.sin(2 * Math.PI * frequencies[f] * noteT) * 0.7
@@ -141,26 +126,13 @@ function generateChimeWav(
   return buffer;
 }
 
-const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = '';
   for (let i = 0; i < bytes.byteLength; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
-  let result = '';
-  let idx = 0;
-  while (idx < binary.length) {
-    const a = binary.charCodeAt(idx++);
-    const b = idx < binary.length ? binary.charCodeAt(idx++) : 0;
-    const c = idx < binary.length ? binary.charCodeAt(idx++) : 0;
-    result += BASE64_CHARS[(a >> 2) & 0x3F];
-    result += BASE64_CHARS[((a & 0x3) << 4) | ((b >> 4) & 0xF)];
-    result += idx - 2 < binary.length ? BASE64_CHARS[((b & 0xF) << 2) | ((c >> 6) & 0x3)] : '=';
-    result += idx - 1 < binary.length ? BASE64_CHARS[c & 0x3F] : '=';
-  }
-  return result;
+  return btoa(binary);
 }
 
 let normalSound: Sound | null = null;

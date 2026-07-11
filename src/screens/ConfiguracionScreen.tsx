@@ -1,50 +1,36 @@
 import React, {useState} from 'react';
 import {View, Text, ScrollView, Switch, TouchableOpacity, Modal, FlatList, StyleSheet} from 'react-native';
 import {COLORS} from '../constants/theme';
-import {BackupScreen} from '../components/BackupScreen';
+import {BackupScreen} from './BackupScreen';
+import {useSettings} from '../contexts/SettingsContext';
 
-const HZ_OPTIONS = [
-  415, 416, 417, 418, 419,
-  420, 421, 422, 423, 424, 425, 426, 427, 428, 429,
-  430, 431, 432, 433, 434, 435, 436, 437, 438, 439,
-  440, 441, 442, 443, 444, 445, 446, 447, 448, 449,
-  450, 451, 452, 453, 454, 455, 456, 457, 458, 459,
-  460, 461, 462, 463, 464, 465, 466,
-];
+const HZ_OPTIONS = Array.from({length: 52}, (_, i) => i + 415);
 
 const NOTATION_OPTIONS = [
   {value: 'spanish' as const, label: 'Español'},
   {value: 'english' as const, label: 'Inglés'},
 ];
 
-interface ConfiguracionScreenProps {
-  proPrecision: boolean;
-  onProPrecisionChange: (value: boolean) => void;
-  referenceHz: number;
-  onReferenceHzChange: (value: number) => void;
-  notationSystem: 'spanish' | 'english';
-  onNotationSystemChange: (value: 'spanish' | 'english') => void;
-}
-
-export const ConfiguracionScreen: React.FC<ConfiguracionScreenProps> = ({
-  proPrecision,
-  onProPrecisionChange,
-  referenceHz,
-  onReferenceHzChange,
-  notationSystem,
-  onNotationSystemChange,
-}) => {
+export const ConfiguracionScreen: React.FC = () => {
+  const {
+    proPrecision,
+    setProPrecision,
+    referenceHz,
+    setReferenceHz,
+    notationSystem,
+    setNotationSystem,
+  } = useSettings();
   const [showHzModal, setShowHzModal] = useState(false);
   const [showNotationModal, setShowNotationModal] = useState(false);
   const [showBackup, setShowBackup] = useState(false);
 
   const handleSelectHz = (hz: number) => {
-    onReferenceHzChange(hz);
+    setReferenceHz(hz);
     setShowHzModal(false);
   };
 
   const handleSelectNotation = (value: 'spanish' | 'english') => {
-    onNotationSystemChange(value);
+    setNotationSystem(value);
     setShowNotationModal(false);
   };
 
@@ -63,16 +49,19 @@ export const ConfiguracionScreen: React.FC<ConfiguracionScreenProps> = ({
             <Text style={styles.rowLabel}>Precisión Profesional</Text>
             <Switch
               value={proPrecision}
-              onValueChange={onProPrecisionChange}
-              trackColor={{false: COLORS.surface, true: '#1A3D2A'}}
+              onValueChange={setProPrecision}
+              trackColor={{false: COLORS.surface, true: COLORS.surfaceActive}}
               thumbColor={proPrecision ? COLORS.accent : COLORS.textSecondary}
+              accessibilityLabel="Precisión Profesional"
             />
           </View>
 
           <TouchableOpacity
             style={styles.row}
             activeOpacity={0.7}
-            onPress={() => setShowHzModal(true)}>
+            onPress={() => setShowHzModal(true)}
+            accessibilityLabel={`Calibrar, frecuencia actual ${referenceHz}Hz`}
+            accessibilityRole="button">
             <Text style={styles.rowLabel}>Calibrar</Text>
             <Text style={styles.rowValue}>{referenceHz}Hz</Text>
           </TouchableOpacity>
@@ -80,7 +69,9 @@ export const ConfiguracionScreen: React.FC<ConfiguracionScreenProps> = ({
           <TouchableOpacity
             style={styles.row}
             activeOpacity={0.7}
-            onPress={() => setShowNotationModal(true)}>
+            onPress={() => setShowNotationModal(true)}
+            accessibilityLabel={`Sistema de Notación, actual ${currentNotationLabel}`}
+            accessibilityRole="button">
             <Text style={styles.rowLabel}>Sistema de Notación</Text>
             <Text style={styles.rowValue}>{currentNotationLabel}</Text>
           </TouchableOpacity>
@@ -93,7 +84,9 @@ export const ConfiguracionScreen: React.FC<ConfiguracionScreenProps> = ({
           <TouchableOpacity
             style={styles.row}
             activeOpacity={0.7}
-            onPress={() => setShowBackup(true)}>
+            onPress={() => setShowBackup(true)}
+            accessibilityLabel="Copia de seguridad"
+            accessibilityRole="button">
             <Text style={styles.rowLabel}>Copia de seguridad</Text>
             <Text style={styles.rowValue}>›</Text>
           </TouchableOpacity>
@@ -207,10 +200,9 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: COLORS.textSecondary,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
     marginBottom: 14,
   },
   sectionContent: {
@@ -275,7 +267,7 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   hzItemSelected: {
-    backgroundColor: '#1A3D2A',
+    backgroundColor: COLORS.surfaceActive,
   },
   hzItemText: {
     color: COLORS.text,

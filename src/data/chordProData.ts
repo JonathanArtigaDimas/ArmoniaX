@@ -1,12 +1,5 @@
 import {extractedCache} from '../utils/chordProExtractor';
-
-function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim();
-}
+import {normalize} from '../utils/textUtils';
 
 let _chordProData: Record<string, string> | null = null;
 

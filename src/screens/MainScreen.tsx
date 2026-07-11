@@ -17,9 +17,11 @@ import {TunerDial} from '../components/TunerDial';
 import {CentsIndicator} from '../components/CentsIndicator';
 import {COLORS} from '../constants/theme';
 import {initSounds, playTunedSound} from '../utils/metronomeSound';
+import {centsFromFreq} from '../utils/tunerUtils';
+import {useSettings} from '../contexts/SettingsContext';
 
 const {AudioResolver} = NativeModules;
-const emitter = new NativeEventEmitter(AudioResolver);
+const emitter = AudioResolver ? new NativeEventEmitter(AudioResolver) : null;
 
 interface StringDef {
   name: string;
@@ -45,7 +47,6 @@ const CHARANGO_STRINGS: StringDef[] = [
   {name: 'G4', frequency: 392.0, minHz: 330, maxHz: 450},
 ];
 
-const TUNED_TOLERANCE_CENTS = 10;
 const STABILITY_MARGIN_RATIO = 0.01;
 const STABILITY_FRAMES = 3;
 
@@ -59,14 +60,9 @@ function getAutoRangeForInstrument(instrumentId: string): {min: number; max: num
     : {min: 70.0, max: 400.0};
 }
 
-interface AfinadorScreenProps {
-  proPrecision: boolean;
-  referenceHz: number;
-  notationSystem: 'spanish' | 'english';
-}
-
-export const AfinadorScreen: React.FC<AfinadorScreenProps> = ({proPrecision, referenceHz, notationSystem}) => {
+export const AfinadorScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const {proPrecision, referenceHz, notationSystem} = useSettings();
   const [selectedInstrument, setSelectedInstrument] =
     useState<Instrument>(INSTRUMENTS[0]);
   const [currentNoteIndex, setCurrentNoteIndex] = useState(0);
@@ -86,6 +82,16 @@ export const AfinadorScreen: React.FC<AfinadorScreenProps> = ({proPrecision, ref
 
   const currentNote: Note = selectedInstrument.notes[currentNoteIndex];
   const activeStrings = getStringsForInstrument(selectedInstrument.id);
+
+  const resetState = useCallback(() => {
+    setIsTuned(false);
+    setDetectedHz(0);
+    setCents(0);
+    freqHistoryRef.current = [];
+    stableCandidateRef.current = null;
+    stableCountRef.current = 0;
+    wasTunedRef.current = false;
+  }, []);
 
   useEffect(() => {
     initSounds();
@@ -118,49 +124,37 @@ export const AfinadorScreen: React.FC<AfinadorScreenProps> = ({proPrecision, ref
     (index: number) => {
       const s = activeStrings[index];
       setSelectedString(index);
-      setIsTuned(false);
-      setDetectedHz(0);
-      setCents(0);
       setAutoMode(false);
-      freqHistoryRef.current = [];
-      stableCandidateRef.current = null;
-      stableCountRef.current = 0;
-      wasTunedRef.current = false;
-      AudioResolver.setTargetFrequencyRange(s.minHz, s.maxHz);
+      resetState();
+      AudioResolver?.setTargetFrequencyRange(s.minHz, s.maxHz);
     },
-    [activeStrings],
+    [activeStrings, resetState],
   );
 
   const handleAutoModeToggle = useCallback(
     (value: boolean) => {
       setAutoMode(value);
       setSelectedString(null);
-      setIsTuned(false);
-      setDetectedHz(0);
-      setCents(0);
-      freqHistoryRef.current = [];
-      stableCandidateRef.current = null;
-      stableCountRef.current = 0;
-      wasTunedRef.current = false;
+      resetState();
 
       if (value) {
         const range = getAutoRangeForInstrument(selectedInstrument.id);
-        AudioResolver.setTargetFrequencyRange(range.min, range.max);
+        AudioResolver?.setTargetFrequencyRange(range.min, range.max);
       }
     },
-    [selectedInstrument.id],
+    [selectedInstrument.id, resetState],
   );
 
   useFocusEffect(
     useCallback(() => {
       if (autoMode && selectedString === null) {
         const range = getAutoRangeForInstrument(selectedInstrument.id);
-        AudioResolver.setTargetFrequencyRange(range.min, range.max);
+        AudioResolver?.setTargetFrequencyRange(range.min, range.max);
       }
 
-      AudioResolver.startListening();
+      AudioResolver?.startListening();
 
-      const subscription = emitter.addListener(
+      const subscription = emitter?.addListener(
         'onFrequencyDetected',
         (freq: number) => {
           if (freq <= 0) return;
@@ -170,8 +164,7 @@ export const AfinadorScreen: React.FC<AfinadorScreenProps> = ({proPrecision, ref
             const strings = getStringsForInstrument(selectedInstrument.id);
             const target = strings[selectedString];
             const adjustedFreq = target.frequency * (referenceHz / 440);
-            const rawCents = 1200 * Math.log2(freq / adjustedFreq);
-            const clampedCents = Math.max(-1000, Math.min(1000, Math.round(rawCents)));
+            const clampedCents = centsFromFreq(freq, adjustedFreq);
             const tuned = Math.abs(clampedCents) <= tunedTolerance;
 
             setIsTuned(tuned);
@@ -211,8 +204,7 @@ export const AfinadorScreen: React.FC<AfinadorScreenProps> = ({proPrecision, ref
                 if (stableCountRef.current >= STABILITY_FRAMES) {
                   setCurrentNoteIndex(index);
                   const adjustedFreq = selectedInstrument.notes[index].frequency * (referenceHz / 440);
-                  const rawC = 1200 * Math.log2(ef / adjustedFreq);
-                  const clampedC = Math.max(-1000, Math.min(1000, Math.round(rawC)));
+                  const clampedC = centsFromFreq(ef, adjustedFreq);
                   const tuned = Math.abs(clampedC) <= tunedTolerance;
                   setCents(clampedC);
                   setIsTuned(tuned);
@@ -233,28 +225,20 @@ export const AfinadorScreen: React.FC<AfinadorScreenProps> = ({proPrecision, ref
       );
 
       return () => {
-        subscription.remove();
-        AudioResolver.stopListening();
-        setIsTuned(false);
-        setDetectedHz(0);
-        setCents(0);
+        subscription?.remove();
+        AudioResolver?.stopListening();
+        resetState();
       };
-    }, [selectedInstrument, selectedString, autoMode, tunedTolerance, referenceHz]),
+    }, [selectedInstrument, selectedString, autoMode, tunedTolerance, referenceHz, resetState]),
   );
 
   const handleInstrumentSelect = (instrument: Instrument) => {
     setSelectedInstrument(instrument);
     setCurrentNoteIndex(0);
-    setCents(0);
     setSelectedString(null);
-    setIsTuned(false);
-    setDetectedHz(0);
-    freqHistoryRef.current = [];
-    stableCandidateRef.current = null;
-    stableCountRef.current = 0;
-    wasTunedRef.current = false;
+    resetState();
     const range = getAutoRangeForInstrument(instrument.id);
-    AudioResolver.setTargetFrequencyRange(range.min, range.max);
+    AudioResolver?.setTargetFrequencyRange(range.min, range.max);
   };
 
   const handlePrevNote = () => {
@@ -263,10 +247,7 @@ export const AfinadorScreen: React.FC<AfinadorScreenProps> = ({proPrecision, ref
       selectedInstrument.notes.length;
     setCurrentNoteIndex(newIndex);
     setSelectedString(null);
-    setIsTuned(false);
-    setCents(0);
-    setDetectedHz(0);
-    wasTunedRef.current = false;
+    resetState();
   };
 
   const handleNextNote = () => {
@@ -274,10 +255,7 @@ export const AfinadorScreen: React.FC<AfinadorScreenProps> = ({proPrecision, ref
       (currentNoteIndex + 1) % selectedInstrument.notes.length;
     setCurrentNoteIndex(newIndex);
     setSelectedString(null);
-    setIsTuned(false);
-    setCents(0);
-    setDetectedHz(0);
-    wasTunedRef.current = false;
+    resetState();
   };
 
   return (
@@ -292,7 +270,7 @@ export const AfinadorScreen: React.FC<AfinadorScreenProps> = ({proPrecision, ref
 
       <View style={styles.body}>
         <View style={styles.noteSection}>
-          <TouchableOpacity onPress={handlePrevNote} style={styles.navButton}>
+          <TouchableOpacity onPress={handlePrevNote} style={styles.navButton} accessibilityLabel="Nota anterior" accessibilityRole="button">
             <Text style={styles.navButtonText}>◀</Text>
           </TouchableOpacity>
 
@@ -305,7 +283,7 @@ export const AfinadorScreen: React.FC<AfinadorScreenProps> = ({proPrecision, ref
             notationSystem={notationSystem}
           />
 
-          <TouchableOpacity onPress={handleNextNote} style={styles.navButton}>
+          <TouchableOpacity onPress={handleNextNote} style={styles.navButton} accessibilityLabel="Siguiente nota" accessibilityRole="button">
             <Text style={styles.navButtonText}>▶</Text>
           </TouchableOpacity>
         </View>
@@ -321,7 +299,7 @@ export const AfinadorScreen: React.FC<AfinadorScreenProps> = ({proPrecision, ref
           <Switch
             value={autoMode}
             onValueChange={handleAutoModeToggle}
-            trackColor={{false: COLORS.surface, true: '#1A3D2A'}}
+            trackColor={{false: COLORS.surface, true: COLORS.surfaceActive}}
             thumbColor={autoMode ? COLORS.accent : COLORS.textSecondary}
           />
         </View>
@@ -340,7 +318,10 @@ export const AfinadorScreen: React.FC<AfinadorScreenProps> = ({proPrecision, ref
                   isActive && styles.stringButtonActive,
                   isTuned && isActive && styles.stringButtonTuned,
                 ]}
-                onPress={() => handleStringSelect(i)}>
+                onPress={() => handleStringSelect(i)}
+                accessibilityLabel={`Cuerda ${getNoteName(s.name, notationSystem)}`}
+                accessibilityRole="button"
+                accessibilityState={{selected: isActive}}>
                 <Text
                   style={[
                     styles.stringButtonText,
@@ -463,10 +444,9 @@ const styles = StyleSheet.create({
   },
   stringTitle: {
     color: COLORS.textSecondary,
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
+    letterSpacing: 0.5,
     marginBottom: 12,
     textAlign: 'center',
   },
@@ -486,11 +466,11 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   stringButtonActive: {
-    backgroundColor: '#1A3D2A',
+    backgroundColor: COLORS.surfaceActive,
     borderColor: COLORS.accent,
   },
   stringButtonTuned: {
-    backgroundColor: '#0D3D20',
+    backgroundColor: COLORS.accentDark,
     borderColor: '#00FF88',
   },
   stringButtonText: {

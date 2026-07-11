@@ -1,5 +1,16 @@
 import {NativeModules} from 'react-native';
 
+const {PDFScanner} = NativeModules;
+
+const NOT_AVAILABLE_ERROR = 'PDFScannerModule no está disponible. Verifica la configuración nativa.';
+
+async function callNative<T>(method: string, ...args: any[]): Promise<T> {
+  if (!PDFScanner) {
+    throw new Error(NOT_AVAILABLE_ERROR);
+  }
+  return PDFScanner[method](...args);
+}
+
 export interface PDFScanResult {
   titulo: string;
   numeroCanto: string;
@@ -11,32 +22,8 @@ interface PDFScanResponse {
   results?: PDFScanResult[];
 }
 
-const {PDFScanner} = NativeModules;
-
 export async function buscarCantoEnPDF(nombreCanto: string): Promise<PDFScanResponse> {
-  if (!PDFScanner) {
-    throw new Error('PDFScannerModule no está disponible. Verifica la configuración nativa.');
-  }
-
-  try {
-    const result: PDFScanResponse = await PDFScanner.buscarCantoEnPDF(nombreCanto);
-    return result;
-  } catch (error) {
-    throw error;
-  }
-}
-
-export async function extractPageText(pages: number[]): Promise<string> {
-  if (!PDFScanner) {
-    throw new Error('PDFScannerModule no está disponible. Verifica la configuración nativa.');
-  }
-
-  try {
-    const result: string = await PDFScanner.extractPageText(pages);
-    return result;
-  } catch (error) {
-    throw error;
-  }
+  return callNative('buscarCantoEnPDF', nombreCanto);
 }
 
 export interface FormattedLine {
@@ -45,16 +32,7 @@ export interface FormattedLine {
 }
 
 export async function extractFormattedText(pages: number[]): Promise<FormattedLine[]> {
-  if (!PDFScanner) {
-    throw new Error('PDFScannerModule no está disponible. Verifica la configuración nativa.');
-  }
-
-  try {
-    const result: FormattedLine[] = await PDFScanner.extractFormattedText(pages);
-    return result;
-  } catch (error) {
-    throw error;
-  }
+  return callNative('extractFormattedText', pages);
 }
 
 export interface ChordPosition {
@@ -68,14 +46,5 @@ export interface ChordProAlignedLine {
 }
 
 export async function extractChordProAligned(pages: number[]): Promise<ChordProAlignedLine[]> {
-  if (!PDFScanner) {
-    throw new Error('PDFScannerModule no está disponible. Verifica la configuración nativa.');
-  }
-
-  try {
-    const result: ChordProAlignedLine[] = await PDFScanner.extractChordProAligned(pages);
-    return result;
-  } catch (error) {
-    throw error;
-  }
+  return callNative('extractChordProAligned', pages);
 }

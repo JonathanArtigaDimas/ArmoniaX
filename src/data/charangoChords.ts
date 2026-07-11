@@ -1,13 +1,4 @@
-export interface ChordData {
-  name: string;
-  label: string;
-  frets: number[];
-}
-
-export interface ChordGroup {
-  title: string;
-  chords: ChordData[];
-}
+import {ChordData, ChordGroup} from './chordTypes';
 
 // Charango tuning: G C E A E (strings 5→1, low→high)
 // frets[0] = string 5 (G), frets[4] = string 1 (E)

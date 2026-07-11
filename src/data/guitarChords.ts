@@ -1,13 +1,4 @@
-export interface ChordData {
-  name: string;
-  label: string;
-  frets: number[];
-}
-
-export interface ChordGroup {
-  title: string;
-  chords: ChordData[];
-}
+import {ChordData, ChordGroup} from './chordTypes';
 
 // Guitar standard tuning: E A D G B E (strings 6→1, low→high)
 // frets[0] = string 6 (low E), frets[5] = string 1 (high E)

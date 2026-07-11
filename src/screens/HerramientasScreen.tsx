@@ -1,21 +1,21 @@
 import React, {useState, Suspense} from 'react';
 import {View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, ActivityIndicator} from 'react-native';
-import {COLORS} from '../constants/theme';
+import {COLORS, SPACING} from '../constants/theme';
 
 const MetronomeScreen = React.lazy(() =>
-  import('../components/MetronomeScreen').then(m => ({default: m.MetronomeScreen})),
+  import('./MetronomeScreen').then(m => ({default: m.MetronomeScreen})),
 );
 const TransposerScreen = React.lazy(() =>
-  import('../components/TransposerScreen').then(m => ({default: m.TransposerScreen})),
+  import('./TransposerScreen').then(m => ({default: m.TransposerScreen})),
 );
 const SongsListScreen = React.lazy(() =>
-  import('../components/SongsListScreen').then(m => ({default: m.SongsListScreen})),
+  import('./SongsListScreen').then(m => ({default: m.SongsListScreen})),
 );
 const ChordLibraryScreen = React.lazy(() =>
-  import('../components/ChordLibraryScreen').then(m => ({default: m.ChordLibraryScreen})),
+  import('./ChordLibraryScreen').then(m => ({default: m.ChordLibraryScreen})),
 );
 const FolderScreen = React.lazy(() =>
-  import('../components/FolderScreen').then(m => ({default: m.FolderScreen})),
+  import('./FolderScreen').then(m => ({default: m.FolderScreen})),
 );
 
 const Fallback = () => (
@@ -25,7 +25,12 @@ const Fallback = () => (
 );
 
 const ToolButton: React.FC<{title: string; onPress: () => void}> = ({title, onPress}) => (
-  <TouchableOpacity style={styles.toolButton} activeOpacity={0.7} onPress={onPress}>
+  <TouchableOpacity
+    style={styles.toolButton}
+    activeOpacity={0.7}
+    onPress={onPress}
+    accessibilityLabel={title}
+    accessibilityRole="button">
     <Text style={styles.toolButtonText}>{title}</Text>
   </TouchableOpacity>
 );
@@ -51,20 +56,6 @@ export const HerramientasScreen: React.FC = () => {
             <ToolButton title="Transportar" onPress={() => setShowTransposer(true)} />
             <ToolButton title="Cantos" onPress={() => setShowCantos(true)} />
             <ToolButton title="Carpetas" onPress={() => setShowCarpetas(true)} />
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Afinación</Text>
-          <View style={styles.sectionContent}>
-            <View style={styles.toolButtonDisabled}>
-              <Text style={styles.toolButtonText}>Afinaciones Personalizadas</Text>
-              <Text style={styles.comingSoonLabel}>Próximamente</Text>
-            </View>
-            <View style={styles.toolButtonDisabled}>
-              <Text style={styles.toolButtonText}>Configuración Vocal</Text>
-              <Text style={styles.comingSoonLabel}>Próximamente</Text>
-            </View>
           </View>
         </View>
       </ScrollView>
@@ -129,34 +120,33 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   contentContainer: {
-    padding: 20,
-    paddingBottom: 40,
+    padding: SPACING.screenPadding,
+    paddingBottom: SPACING.screenPaddingBottom,
   },
   screenTitle: {
     color: COLORS.text,
     fontSize: 28,
     fontWeight: '700',
-    marginBottom: 32,
+    marginBottom: SPACING.xxxl,
   },
   section: {
-    marginBottom: 28,
+    marginBottom: SPACING.sectionGap,
   },
   sectionTitle: {
     color: COLORS.textSecondary,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 14,
+    letterSpacing: 0.5,
+    marginBottom: SPACING.lg,
   },
   sectionContent: {
-    gap: 10,
+    gap: SPACING.buttonGap,
   },
   toolButton: {
     backgroundColor: COLORS.surface,
     borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
+    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.lg + 2,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
@@ -164,22 +154,5 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 16,
     fontWeight: '500',
-  },
-  toolButtonDisabled: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    opacity: 0.5,
-  },
-  comingSoonLabel: {
-    color: COLORS.accent,
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
 });

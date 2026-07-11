@@ -36,14 +36,3 @@ export async function removeNote(cantoNumber: number): Promise<void> {
     }
   } catch {}
 }
-
-export async function hasNote(cantoNumber: number): Promise<boolean> {
-  try {
-    const json = await AsyncStorage.getItem(STORAGE_KEY);
-    if (json) {
-      const notes = JSON.parse(json) as Record<string, string>;
-      return !!notes[String(cantoNumber)];
-    }
-  } catch {}
-  return false;
-}

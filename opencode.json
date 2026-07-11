@@ -1,0 +1,8 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+    "plugin": [
+        "../ponytail/.opencode/plugins/ponitail.mjs",
+        "../ui-ux-pro-max-skill/.opencode/plugins/ui-ux-pro-max-skill.mjs",
+        "../impeccable/.opencode/plugins/impeccable"
+    ]
+}

@@ -1,6 +1,7 @@
 import React, {useEffect, useRef} from 'react';
 import {View, Text, Animated, StyleSheet} from 'react-native';
 import {COLORS} from '../constants/theme';
+import {getCentsColor} from '../utils/tunerUtils';
 
 interface TunerDialProps {
   cents: number;
@@ -38,13 +39,7 @@ export const TunerDial: React.FC<TunerDialProps> = ({
     outputRange: [`${NEEDLE_MIN_ANGLE}deg`, `${NEEDLE_MAX_ANGLE}deg`],
   });
 
-  const needleColor = isTuned
-    ? '#00FF88'
-    : Math.abs(cents) <= tolerance / 2
-      ? COLORS.accent
-      : Math.abs(cents) <= tolerance * 1.5
-        ? COLORS.warning
-        : COLORS.error;
+  const needleColor = getCentsColor(cents, isTuned, tolerance);
 
   return (
     <View style={styles.container}>
