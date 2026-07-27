@@ -56,7 +56,14 @@ import {
   suggestCapo,
   isAllEasy,
 } from '../utils/chordProParser';
-import {transposeChord} from '../utils/chordTransposer';
+import {transposeChord, parseAcorde, ESCALA} from '../utils/chordTransposer';
+
+const detectOriginalKey = (text: string): number => {
+  const chords = extractUniqueChords(text);
+  if (chords.length === 0) return 0;
+  const parsed = parseAcorde(chords[0]);
+  return parsed ? parsed.indice : 0;
+};
 
 interface PdfViewerScreenProps {
   songName: string;
@@ -102,6 +109,7 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
   const [showGuardadosModal, setShowGuardadosModal] = useState(false);
   const [manualCapo, setManualCapo] = useState(0);
   const [showCapoDropdown, setShowCapoDropdown] = useState(false);
+  const [showTonalidadModal, setShowTonalidadModal] = useState(false);
 
   const resolvedPages = pages ?? (page ? [page] : []);
   const hasPdfPages = resolvedPages.length > 0;
@@ -372,6 +380,7 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
                   style={styles.dropdownItem}
                   onPress={() => {
                     setShowMenuDropdown(false);
+                    setShowTonalidadModal(true);
                   }}>
                   <Text style={styles.dropdownItemIcon}>🎵</Text>
                   <Text style={styles.dropdownItemText}>Tonalidad</Text>
@@ -751,6 +760,87 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
               <Text style={styles.guardadosEmptyTitle}>Sin configuraciones</Text>
               <Text style={styles.guardadosEmptyText}>
                 Aún no has guardado ninguna configuración. Usa el botón "+" para guardar una.
+              </Text>
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      {/* Modal de Tonalidad */}
+      <Modal
+        visible={showTonalidadModal}
+        animationType="slide"
+        onRequestClose={() => setShowTonalidadModal(false)}>
+        <View style={styles.recomendacionesContainer}>
+          <View style={styles.recomendacionesHeader}>
+            <TouchableOpacity
+              onPress={() => setShowTonalidadModal(false)}
+              style={styles.recomendacionesCloseButton}>
+              <Text style={styles.recomendacionesCloseText}>✕</Text>
+            </TouchableOpacity>
+            <Text style={styles.recomendacionesTitle}>Tonalidad</Text>
+            <View style={{width: 40}} />
+          </View>
+
+          {chordProText ? (() => {
+            const originalKey = detectOriginalKey(chordProText);
+            const currentKey = ((originalKey + transposeOffset) % 12 + 12) % 12;
+            
+            return (
+              <View style={styles.recomendacionesContent}>
+                <Text style={styles.recomendacionesSectionTitle}>
+                  Tonalidad original: {ESCALA[originalKey]}
+                </Text>
+                
+                <ScrollView style={{ marginTop: 10 }}>
+                  {ESCALA.map((nota, num) => {
+                    const isOriginal = num === originalKey;
+                    const isCurrent = num === currentKey;
+                    
+                    return (
+                      <TouchableOpacity
+                        key={num}
+                        style={[
+                          styles.guardadosCard,
+                          isCurrent && { backgroundColor: COLORS.surfaceActive }
+                        ]}
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          const diff = ((num - originalKey) % 12 + 12) % 12;
+                          const semitones = diff > 6 ? diff - 12 : diff;
+                          setTransposeOffset(semitones);
+                          setSavedCapoActive(false);
+                          setActiveSavedCapo(null);
+                          setShowTonalidadModal(false);
+                        }}>
+                        <View style={[styles.guardadosCardIconContainer, { width: 40, backgroundColor: 'transparent' }]}>
+                          <Text style={[styles.guardadosCardTitle, isCurrent && { color: COLORS.accent }]}>{nota}</Text>
+                        </View>
+                        <View style={styles.guardadosCardContent}>
+                          {isOriginal && (
+                            <Text style={[styles.guardadosCardSubtitle, { color: COLORS.accent }]}>
+                              Original
+                            </Text>
+                          )}
+                        </View>
+                        {isCurrent && (
+                          <Text style={[styles.recomendacionesCardArrow, { color: COLORS.accent }]}>✓</Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                <Text style={styles.recomendacionesHint}>
+                  Toca una tonalidad para transportar el canto
+                </Text>
+              </View>
+            );
+          })() : (
+            <View style={styles.recomendacionesEmptyContainer}>
+              <Text style={styles.recomendacionesEmptyIcon}>🎵</Text>
+              <Text style={styles.recomendacionesEmptyTitle}>Sin acordes</Text>
+              <Text style={styles.recomendacionesEmptyText}>
+                No hay acordes disponibles para este canto.
               </Text>
             </View>
           )}

@@ -9,6 +9,7 @@
  * - Biblioteca de acordes: diagramas para guitarra y charango
  * - Transportar: transpose acordes y calcula capo óptimo
  * - Cantos: menú con opciones CNC, Tradicional y Carpetas
+ * - Rango Vocal: detector de tipo de voz por rango seleccionado
  *
  * Cada herramienta se carga con React.lazy() para code-splitting.
  * Se abren como modales con animación slide.
@@ -33,6 +34,9 @@ const CantosMenuScreen = React.lazy(() =>
 );
 const ChordLibraryScreen = React.lazy(() =>
   import('./ChordLibraryScreen').then(m => ({default: m.ChordLibraryScreen})),
+);
+const VocalRangeScreen = React.lazy(() =>
+  import('./VocalRangeScreen').then(m => ({default: m.VocalRangeScreen})),
 );
 
 /** Componente de carga mientras se descarga la herramienta (Suspense fallback) */
@@ -66,6 +70,7 @@ export const HerramientasScreen: React.FC = () => {
   const [showChordLibrary, setShowChordLibrary] = useState(false);
   const [showTransposer, setShowTransposer] = useState(false);
   const [showCantos, setShowCantos] = useState(false);
+  const [showVocalRange, setShowVocalRange] = useState(false);
 
   return (
     <View style={styles.container}>
@@ -80,6 +85,7 @@ export const HerramientasScreen: React.FC = () => {
             <ToolButton title="Biblioteca de acordes" onPress={() => setShowChordLibrary(true)} />
             <ToolButton title="Transportar" onPress={() => setShowTransposer(true)} />
             <ToolButton title="Cantos" onPress={() => setShowCantos(true)} />
+            <ToolButton title="Rango Vocal" onPress={() => setShowVocalRange(true)} />
           </View>
         </View>
       </ScrollView>
@@ -121,6 +127,16 @@ export const HerramientasScreen: React.FC = () => {
           onRequestClose={() => setShowCantos(false)}>
           <Suspense fallback={<Fallback />}>
             <CantosMenuScreen onClose={() => setShowCantos(false)} />
+          </Suspense>
+        </Modal>
+      )}
+      {showVocalRange && (
+        <Modal
+          visible={showVocalRange}
+          animationType="slide"
+          onRequestClose={() => setShowVocalRange(false)}>
+          <Suspense fallback={<Fallback />}>
+            <VocalRangeScreen onClose={() => setShowVocalRange(false)} />
           </Suspense>
         </Modal>
       )}
