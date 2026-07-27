@@ -1,29 +1,51 @@
+/**
+ * HerramientasScreen.tsx - Hub de herramientas musicales
+ *
+ * Pantalla principal de la pestaña "Herramientas".
+ * Muestra una lista de botones que abren herramientas como modales full-screen.
+ *
+ * Herramientas disponibles:
+ * - Metrónomo: BPM, compases, presets de tempo
+ * - Biblioteca de acordes: diagramas para guitarra y charango
+ * - Transportar: transpose acordes y calcula capo óptimo
+ * - Cantos: menú con opciones CNC, Tradicional y Carpetas
+ *
+ * Cada herramienta se carga con React.lazy() para code-splitting.
+ * Se abren como modales con animación slide.
+ */
 import React, {useState, Suspense} from 'react';
 import {View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, ActivityIndicator} from 'react-native';
 import {COLORS, SPACING} from '../constants/theme';
 
+/**
+ * Lazy loading de herramientas.
+ * Cada pantalla se importa dinámicamente para reducir el bundle inicial.
+ * Se cargan solo cuando el usuario abre la herramienta.
+ */
 const MetronomeScreen = React.lazy(() =>
   import('./MetronomeScreen').then(m => ({default: m.MetronomeScreen})),
 );
 const TransposerScreen = React.lazy(() =>
   import('./TransposerScreen').then(m => ({default: m.TransposerScreen})),
 );
-const SongsListScreen = React.lazy(() =>
-  import('./SongsListScreen').then(m => ({default: m.SongsListScreen})),
+const CantosMenuScreen = React.lazy(() =>
+  import('./CantosMenuScreen').then(m => ({default: m.CantosMenuScreen})),
 );
 const ChordLibraryScreen = React.lazy(() =>
   import('./ChordLibraryScreen').then(m => ({default: m.ChordLibraryScreen})),
 );
-const FolderScreen = React.lazy(() =>
-  import('./FolderScreen').then(m => ({default: m.FolderScreen})),
-);
 
+/** Componente de carga mientras se descarga la herramienta (Suspense fallback) */
 const Fallback = () => (
   <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background}}>
     <ActivityIndicator size="large" color={COLORS.accent} />
   </View>
 );
 
+/**
+ * Botón reutilizable para cada herramienta.
+ * Muestra el nombre de la herramienta con estilo de card.
+ */
 const ToolButton: React.FC<{title: string; onPress: () => void}> = ({title, onPress}) => (
   <TouchableOpacity
     style={styles.toolButton}
@@ -35,12 +57,15 @@ const ToolButton: React.FC<{title: string; onPress: () => void}> = ({title, onPr
   </TouchableOpacity>
 );
 
+/**
+ * Pantalla hub de herramientas musicales.
+ * Cada herramienta se abre como modal con lazy loading.
+ */
 export const HerramientasScreen: React.FC = () => {
   const [showMetronome, setShowMetronome] = useState(false);
   const [showChordLibrary, setShowChordLibrary] = useState(false);
   const [showTransposer, setShowTransposer] = useState(false);
   const [showCantos, setShowCantos] = useState(false);
-  const [showCarpetas, setShowCarpetas] = useState(false);
 
   return (
     <View style={styles.container}>
@@ -55,7 +80,6 @@ export const HerramientasScreen: React.FC = () => {
             <ToolButton title="Biblioteca de acordes" onPress={() => setShowChordLibrary(true)} />
             <ToolButton title="Transportar" onPress={() => setShowTransposer(true)} />
             <ToolButton title="Cantos" onPress={() => setShowCantos(true)} />
-            <ToolButton title="Carpetas" onPress={() => setShowCarpetas(true)} />
           </View>
         </View>
       </ScrollView>
@@ -96,17 +120,7 @@ export const HerramientasScreen: React.FC = () => {
           animationType="slide"
           onRequestClose={() => setShowCantos(false)}>
           <Suspense fallback={<Fallback />}>
-            <SongsListScreen onClose={() => setShowCantos(false)} />
-          </Suspense>
-        </Modal>
-      )}
-      {showCarpetas && (
-        <Modal
-          visible={showCarpetas}
-          animationType="slide"
-          onRequestClose={() => setShowCarpetas(false)}>
-          <Suspense fallback={<Fallback />}>
-            <FolderScreen onClose={() => setShowCarpetas(false)} />
+            <CantosMenuScreen onClose={() => setShowCantos(false)} />
           </Suspense>
         </Modal>
       )}

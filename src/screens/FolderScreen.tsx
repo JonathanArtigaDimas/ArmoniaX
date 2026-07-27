@@ -1,3 +1,29 @@
+/**
+ * FolderScreen.tsx - Gestión de carpetas para organizar cantos
+ *
+ * Pantalla completa para crear, editar y eliminar carpetas personalizadas.
+ * Cada carpeta puede contener múltiples cantos del himnario.
+ *
+ * Funcionalidades:
+ * - Lista de carpetas con contador de cantos
+ * - Crear carpetas nuevas (modal con input)
+ * - Renombrar carpetas (long press → opción Renombrar)
+ * - Eliminar carpetas (long press → opción Eliminar, con confirmación)
+ * - Ver cantos dentro de una carpeta
+ * - Agregar cantos a una carpeta (búsqueda + selección múltiple)
+ * - Quitar cantos de una carpeta (long press en canto)
+ * - Abrir cantos en PdfViewerScreen
+ *
+ * Flujo de navegación:
+ * 1. Vista principal: lista de carpetas
+ * 2. Tap en carpeta: vista de cantos de esa carpeta
+ * 3. Botón "+": modal para agregar cantos (con búsqueda)
+ * 4. Tap en canto: abre PdfViewerScreen en modal
+ *
+ * Persistencia: todo se guarda en AsyncStorage via songStorage.ts.
+ *
+ * Usado como modal desde HerramientasScreen.
+ */
 import React, {useState, useMemo, useCallback, useEffect} from 'react';
 import {
   View,
@@ -24,10 +50,26 @@ import {
 } from '../utils/songStorage';
 import {PdfViewerScreen} from './PdfViewerScreen';
 
+/**
+ * Normaliza un texto eliminando tildes, acentos y diacríticos.
+ * Usa Unicode NFD para descomponer caracteres (ej: "á" → "a" + "´")
+ * y luego elimina los marcos combinantes.
+ */
+const normalizeText = (text: string): string =>
+  text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/['¡!¿?]/g, '')
+    .toLowerCase();
+
 interface FolderScreenProps {
   onClose: () => void;
 }
 
+/**
+ * Pantalla de gestión de carpetas de cantos.
+ * CRUD completo de carpetas y cantos dentro de ellas.
+ */
 export const FolderScreen: React.FC<FolderScreenProps> = ({onClose}) => {
   const [folders, setFolders] = useState<FolderInfo[]>([]);
   const [customSongs, setCustomSongs] = useState<SongInfo[]>([]);
@@ -76,10 +118,10 @@ export const FolderScreen: React.FC<FolderScreenProps> = ({onClose}) => {
     if (addSearch.trim().length === 0) {
       return songsNotInFolder;
     }
-    const q = addSearch.toLowerCase();
+    const q = normalizeText(addSearch);
     return songsNotInFolder.filter(
       s =>
-        s.name.toLowerCase().includes(q) ||
+        normalizeText(s.name).includes(q) ||
         String(s.cantoNumber).includes(q),
     );
   }, [songsNotInFolder, addSearch]);

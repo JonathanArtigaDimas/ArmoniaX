@@ -1,3 +1,27 @@
+/**
+ * SongsListScreen.tsx - Lista de búsqueda de cantos del himnario
+ *
+ * Pantalla que muestra los ~300 cantos del himnario iResucito
+ * en una lista con búsqueda en tiempo real.
+ *
+ * Características:
+ * - FlatList optimizado para listas grandes
+ * - Búsqueda por nombre o número de canto
+ * - Cada canto muestra nombre y número (ej: "Alabaré - Canto 123")
+ * - Al seleccionar un canto, abre PdfViewerScreen en modal
+ * - Lazy loading de PdfViewerScreen (React.lazy)
+ *
+ * Los datos vienen de SONGS (generado desde songMapping.ts).
+ *
+ * Optimizaciones:
+ * - initialNumToRender: 15 (carga inicial rápida)
+ * - maxToRenderPerBatch: 20
+ * - windowSize: 5 (renderizado virtual)
+ * - useMemo para la búsqueda filtrada
+ * - useCallback para renderizado de items
+ *
+ * Usado como modal desde HerramientasScreen.
+ */
 import React, {useState, useMemo, useCallback} from 'react';
 import {
   View,
@@ -11,6 +35,20 @@ import {
 import {COLORS} from '../constants/theme';
 import {SONGS, SongInfo} from '../data/songs';
 
+/**
+ * Normaliza un texto eliminando tildes, acentos y diacríticos.
+ * Usa Unicode NFD para descomponer caracteres (ej: "á" → "a" + "´")
+ * y luego elimina los marcos combinantes.
+ *
+ * Ejemplo: "María" → "maria", "¡Aleluya!" → "aleluya"
+ */
+const normalizeText = (text: string): string =>
+  text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')  // elimina diacríticos (tildes, eñe, etc.)
+    .replace(/['¡!¿?]/g, '')          // elimina signos de puntuación especiales
+    .toLowerCase();
+
 const PdfViewerScreen = React.lazy(() =>
   import('./PdfViewerScreen').then(m => ({default: m.PdfViewerScreen})),
 );
@@ -19,6 +57,10 @@ interface SongsListScreenProps {
   onClose: () => void;
 }
 
+/**
+ * Lista de cantos del himnario con búsqueda.
+ * Al seleccionar un canto, abre el visor de PDF/ChordPro.
+ */
 export const SongsListScreen: React.FC<SongsListScreenProps> = ({onClose}) => {
   const [search, setSearch] = useState('');
   const [selectedSong, setSelectedSong] = useState<SongInfo | null>(null);
@@ -27,10 +69,10 @@ export const SongsListScreen: React.FC<SongsListScreenProps> = ({onClose}) => {
     if (search.trim().length === 0) {
       return SONGS;
     }
-    const query = search.toLowerCase();
+    const query = normalizeText(search);
     return SONGS.filter(
       s =>
-        s.name.toLowerCase().includes(query) ||
+        normalizeText(s.name).includes(query) ||
         String(s.cantoNumber).includes(query),
     );
   }, [search]);

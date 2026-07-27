@@ -1,3 +1,32 @@
+/**
+ * MainScreen.tsx - Pantalla principal del afinador (AfinadorScreen)
+ *
+ * Esta es la pantalla más compleja de la app. Implementa un afinador
+ * en tiempo real que usa el micrófono del dispositivo para detectar
+ * la frecuencia de la nota que se está tocando.
+ *
+ * Funcionalidades principales:
+ * - Detección de frecuencia via módulo nativo AudioResolver
+ * - Dos modos de operación:
+ *   1. Automático: detecta la nota más cercana a la frecuencia captada
+ *   2. Manual: el usuario selecciona qué cuerda quiere afinar
+ * - Indicadores visuales: dial animado, nota, cents, estado
+ * - Sonido de confirmación al afinar (campana de Do mayor)
+ * - Soporte para Guitarra y Charango
+ * - Detección de armónicos (cuando el micrófono capta el 2do armónico)
+ *
+ * Flujo de audio:
+ * 1. AudioResolver.startListening() inicia la captura del micrófono
+ * 2. Emite eventos 'onFrequencyDetected' con la frecuencia en Hz
+ * 3. Se calcula la nota más cercana y los cents de desviación
+ * 4. Se actualizan los componentes visuales
+ * 5. Si está en modo manual, se filtra por rango de frecuencia de la cuerda
+ *
+ * Optimizaciones:
+ * - Filtro de estabilidad (STABILITY_FRAMES): ignora fluctuaciones momentáneas
+ * - Margen de estabilidad (STABILITY_MARGIN_RATIO): tolerancia al ruido
+ * - Timeout de "afinado": evita sonido repetido en 600ms
+ */
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
   View,
@@ -20,16 +49,27 @@ import {initSounds, playTunedSound} from '../utils/metronomeSound';
 import {centsFromFreq} from '../utils/tunerUtils';
 import {useSettings} from '../contexts/SettingsContext';
 
+/** Módulo nativo de AudioResolver para detectar frecuencias del micrófono */
 const {AudioResolver} = NativeModules;
+/** Emisor de eventos del AudioResolver (para escuchar onFrequencyDetected) */
 const emitter = AudioResolver ? new NativeEventEmitter(AudioResolver) : null;
 
+/**
+ * Definición de una cuerda del instrumento.
+ * Cada cuerda tiene un rango de frecuencias para filtrar la detección.
+ */
 interface StringDef {
-  name: string;
-  frequency: number;
-  minHz: number;
-  maxHz: number;
+  name: string;      // Nombre de la cuerda (ej: "E2", "A4")
+  frequency: number; // Frecuencia objetivo en Hz
+  minHz: number;     // Frecuencia mínima del rango de detección
+  maxHz: number;     // Frecuencia máxima del rango de detección
 }
 
+/**
+ * Cuerdas de la guitarra estándar (6 cuerdas).
+ * Cada una define su rango de frecuencias para el modo manual.
+ * El rango se usa para filtrar las detecciones del micrófono.
+ */
 const GUITAR_STRINGS: StringDef[] = [
   {name: 'E2', frequency: 82.4, minHz: 55, maxHz: 115},
   {name: 'A2', frequency: 110.0, minHz: 80, maxHz: 145},
@@ -39,6 +79,10 @@ const GUITAR_STRINGS: StringDef[] = [
   {name: 'E4', frequency: 329.6, minHz: 280, maxHz: 380},
 ];
 
+/**
+ * Cuerdas del charango (5 cuerdas).
+ * Afinación estándar andina: G C E A E
+ */
 const CHARANGO_STRINGS: StringDef[] = [
   {name: 'E4', frequency: 329.6, minHz: 280, maxHz: 380},
   {name: 'A4', frequency: 440.0, minHz: 380, maxHz: 500},
@@ -47,19 +91,33 @@ const CHARANGO_STRINGS: StringDef[] = [
   {name: 'G4', frequency: 392.0, minHz: 330, maxHz: 450},
 ];
 
+/** Margen de estabilidad como ratio de la frecuencia (1% de tolerancia al ruido) */
 const STABILITY_MARGIN_RATIO = 0.01;
+/** Número de frames consecutivos estables antes de cambiar de nota */
 const STABILITY_FRAMES = 3;
 
+/** Devuelve las cuerdas del instrumento según su ID */
 function getStringsForInstrument(instrumentId: string): StringDef[] {
   return instrumentId === 'charango' ? CHARANGO_STRINGS : GUITAR_STRINGS;
 }
 
+/**
+ * Rango de frecuencias para el modo automático.
+ * El modo auto escucha todo el rango del instrumento.
+ * Guitarra: 70-400 Hz cubre E2 a E4
+ * Charango: 280-700 Hz cubre E4 a E5
+ */
 function getAutoRangeForInstrument(instrumentId: string): {min: number; max: number} {
   return instrumentId === 'charango'
     ? {min: 280.0, max: 700.0}
     : {min: 70.0, max: 400.0};
 }
 
+/**
+ * Pantalla principal del afinador.
+ * Maneja la detección de audio, selección de instrumento/cuerda,
+ * y muestra los indicadores visuales de afinación.
+ */
 export const AfinadorScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const {proPrecision, referenceHz, notationSystem} = useSettings();
@@ -72,13 +130,15 @@ export const AfinadorScreen: React.FC = () => {
   const [detectedHz, setDetectedHz] = useState(0);
   const [autoMode, setAutoMode] = useState(true);
 
+  // Tolerancia según modo: 3 cents (profesional) o 10 cents (normal)
   const tunedTolerance = proPrecision ? 3 : 10;
 
-  const freqHistoryRef = useRef<number[]>([]);
-  const stableCandidateRef = useRef<{index: number; cents: number} | null>(null);
-  const stableCountRef = useRef(0);
-  const wasTunedRef = useRef(false);
-  const tunedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Referencias para el filtro de estabilidad (no causan re-renders)
+  const freqHistoryRef = useRef<number[]>([]);           // Historial de frecuencias recientes
+  const stableCandidateRef = useRef<{index: number; cents: number} | null>(null); // Candidato estable actual
+  const stableCountRef = useRef(0);                      // Contador de frames estables
+  const wasTunedRef = useRef(false);                     // Si ya sonó el sonido de afinado
+  const tunedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // Timeout anti-repetición
 
   const currentNote: Note = selectedInstrument.notes[currentNoteIndex];
   const activeStrings = getStringsForInstrument(selectedInstrument.id);
@@ -339,6 +399,21 @@ export const AfinadorScreen: React.FC = () => {
   );
 };
 
+/**
+ * Encuentra la nota más cercana a una frecuencia detectada.
+ *
+ * Algoritmo:
+ * 1. Compara la frecuencia con todas las notas del instrumento
+ * 2. Calcula la desviación en cents para cada una
+ * 3. Selecciona la nota con menor desviación
+ * 4. Detección de armónicos: si la directa tiene >200 cents de desviación,
+ *    prueba con frecuencia/2 (2do armónico) para evitar falsos positivos
+ *
+ * @param frequency - Frecuencia detectada por el micrófono
+ * @param notes - Array de notas del instrumento
+ * @param refHz - Frecuencia de referencia (default 440)
+ * @returns Objeto con índice de la nota, cents de desviación y frecuencia efectiva
+ */
 function findClosestNote(
   frequency: number,
   notes: Note[],

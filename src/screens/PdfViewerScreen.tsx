@@ -1,3 +1,27 @@
+/**
+ * PdfViewerScreen.tsx - Visor de PDF y ChordPro de cantos
+ *
+ * Pantalla multifuncional que muestra la información de un canto:
+ *
+ * 1. Visor de PDF: muestra páginas extraídas del himnario
+ * 2. Visor de ChordPro: muestra acordes y letra en formato estructurado
+ * 3. Transporte de acordes: transpone acordes con +/- semitonos
+ * 4. Sugerencias de capo: calcula y muestra posición óptima de capo
+ * 5. Guardado de sugerencias: permite guardar configuraciones personalizadas
+ * 6. Notas personales: campo de texto por canto
+ *
+ * Funcionalidades del ChordPro:
+ * - Parsing de formato ChordPro ([Am]Letra, {title: Nombre})
+ * - Transporte inline de acordes
+ * - Detección de acordes fáciles/difíciles
+ * - Sugerencia automática de capo
+ * - Guardado de configuraciones personalizadas (nombre + offset + capo)
+ *
+ * El PDF se extrae del himnario bundled usando pdf-lib.
+ * Los acordes vienen de chordProData.ts (cancionero.js + caché).
+ *
+ * Usado como modal desde SongsListScreen y FolderScreen.
+ */
 import React, {useEffect, useRef, useState, useCallback} from 'react';
 import {
   View,
@@ -42,6 +66,10 @@ interface PdfViewerScreenProps {
   onClose: () => void;
 }
 
+/**
+ * Visor de PDF y ChordPro de cantos.
+ * Combina visor de PDF con transporte de acordes y notas personales.
+ */
 export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
   songName,
   cantoNumber,
@@ -67,6 +95,13 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
   const [showNote, setShowNote] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [notePreview, setNotePreview] = useState('');
+
+  const [showMenuDropdown, setShowMenuDropdown] = useState(false);
+
+  const [showRecomendacionesModal, setShowRecomendacionesModal] = useState(false);
+  const [showGuardadosModal, setShowGuardadosModal] = useState(false);
+  const [manualCapo, setManualCapo] = useState(0);
+  const [showCapoDropdown, setShowCapoDropdown] = useState(false);
 
   const resolvedPages = pages ?? (page ? [page] : []);
   const hasPdfPages = resolvedPages.length > 0;
@@ -145,13 +180,15 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
     await saveCapoSuggestion(songName, {
       name: newSuggestionName.trim(),
       offset: transposeOffset,
-      capo: activeSavedCapo ?? 0,
+      capo: manualCapo,
     });
     const updated = await loadCapoSuggestions(songName);
     setSavedSuggestions(updated);
     setNewSuggestionName('');
+    setManualCapo(0);
+    setShowCapoDropdown(false);
     setShowSaveInput(false);
-  }, [songName, activeSavedCapo, transposeOffset, newSuggestionName]);
+  }, [songName, manualCapo, transposeOffset, newSuggestionName]);
 
   const handleDeleteCapoSuggestion = useCallback((index: number) => {
     Alert.alert(
@@ -279,8 +316,69 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
             <Text style={styles.chordsTitle} numberOfLines={1}>
               {songName}
             </Text>
-            <View style={{width: 40}} />
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={() => setShowMenuDropdown(!showMenuDropdown)}
+              accessibilityLabel="Menú de opciones"
+              accessibilityRole="button">
+              <Text style={styles.menuButtonText}>☰</Text>
+            </TouchableOpacity>
           </View>
+
+          {/* Dropdown del menú de opciones */}
+          {showMenuDropdown && (
+            <View style={styles.dropdownContainer}>
+              <TouchableOpacity
+                style={styles.dropdownBackdrop}
+                activeOpacity={1}
+                onPress={() => setShowMenuDropdown(false)}
+              />
+              <View style={styles.dropdownMenu}>
+                <TouchableOpacity
+                  style={styles.dropdownItem}
+                  onPress={() => {
+                    setShowMenuDropdown(false);
+                    setShowRecomendacionesModal(true);
+                  }}>
+                  <Text style={styles.dropdownItemIcon}>🎯</Text>
+                  <Text style={styles.dropdownItemText}>Recomendaciones</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.dropdownItem}
+                  onPress={() => {
+                    setShowMenuDropdown(false);
+                    setShowGuardadosModal(true);
+                  }}>
+                  <Text style={styles.dropdownItemIcon}>💾</Text>
+                  <Text style={styles.dropdownItemText}>Guardados</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.dropdownItem}
+                  onPress={() => {
+                    setShowMenuDropdown(false);
+                  }}>
+                  <Text style={styles.dropdownItemIcon}>🔀</Text>
+                  <Text style={styles.dropdownItemText}>Transportados</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.dropdownItem}
+                  onPress={() => {
+                    setShowMenuDropdown(false);
+                  }}>
+                  <Text style={styles.dropdownItemIcon}>🎤</Text>
+                  <Text style={styles.dropdownItemText}>Recomendación Vocal</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.dropdownItem}
+                  onPress={() => {
+                    setShowMenuDropdown(false);
+                  }}>
+                  <Text style={styles.dropdownItemIcon}>🎵</Text>
+                  <Text style={styles.dropdownItemText}>Tonalidad</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
 
           {chordProText && (() => {
             const originalChords = extractUniqueChords(chordProText);
@@ -288,9 +386,9 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
               ? originalChords
               : originalChords.map(c => transposeChord(c, transposeOffset, true));
             const capoSug = isAllEasy(currentChords) ? null : suggestCapo(currentChords);
-            const displayCapo = transposeOffset === 0
-              ? null
-              : (savedCapoActive ? activeSavedCapo : (capoSug ? capoSug.capo : null));
+            const displayCapo = savedCapoActive && activeSavedCapo != null && activeSavedCapo > 0
+              ? activeSavedCapo
+              : null;
             return (
               <View style={styles.transposeBar}>
                 {transposeOffset !== 0 && (
@@ -330,63 +428,15 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
             <View style={styles.saveSuggestionContainer}>
               <TouchableOpacity
                 style={styles.saveSuggestionButton}
-                onPress={() => setShowSaveInput(true)}>
+                onPress={() => {
+                  setManualCapo(activeSavedCapo ?? 0);
+                  setShowCapoDropdown(false);
+                  setShowSaveInput(true);
+                }}>
                 <Text style={styles.saveSuggestionButtonText}>Guardar configuración</Text>
               </TouchableOpacity>
             </View>
           )}
-
-          {chordProText && (() => {
-            const originalChords = extractUniqueChords(chordProText);
-            const currentChords = transposeOffset === 0
-              ? originalChords
-              : originalChords.map(c => transposeChord(c, transposeOffset, true));
-            return (
-              <>
-                {savedSuggestions.length > 0 && (
-                  <View style={styles.savedSuggestionsContainer}>
-                    {savedSuggestions.map((saved, idx) => (
-                      <TouchableOpacity
-                        key={idx}
-                        style={styles.savedSuggestionChip}
-                        onPress={() => { setSavedCapoActive(true); setActiveSavedCapo(saved.capo); setTransposeOffset(saved.offset); }}
-                        onLongPress={() => handleDeleteCapoSuggestion(idx)}>
-                        <Text style={styles.savedSuggestionChipText}>{saved.name}</Text>
-                        <Text style={styles.savedSuggestionCapo}>{saved.capo > 0 ? `Capo ${saved.capo}` : 'Sin capo'}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-                {savedSuggestions.length > 0 && (
-                  <Text style={styles.savedSuggestionHint}>
-                    Mantén presionado para eliminar
-                  </Text>
-                )}
-                {!isAllEasy(currentChords) && !savedCapoActive && (() => {
-                  const capoSuggestion = suggestCapo(currentChords);
-                  if (!capoSuggestion) {
-                    return null;
-                  }
-                  return (
-                    <View style={styles.capoSuggestionRow}>
-                      <TouchableOpacity
-                        style={styles.capoSuggestion}
-                        onPress={() => {
-                          setSavedCapoActive(true);
-                          setActiveSavedCapo(capoSuggestion.capo);
-                          setTransposeOffset(prev => prev - capoSuggestion.capo);
-                        }}>
-                        <Text style={styles.capoSuggestionText}>
-                          Capo {capoSuggestion.capo} → {capoSuggestion.displayChords.join(', ')}
-                        </Text>
-                        <Text style={styles.capoSuggestionHint}>Toca para aplicar</Text>
-                      </TouchableOpacity>
-                    </View>
-                  );
-                })()}
-              </>
-            );
-          })()}
 
           {chordProText ? (
             <ScrollView
@@ -467,24 +517,75 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
         visible={showSaveInput}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowSaveInput(false)}>
+        onRequestClose={() => {
+          setShowSaveInput(false);
+          setNewSuggestionName('');
+          setManualCapo(0);
+          setShowCapoDropdown(false);
+        }}>
         <View style={styles.saveInputOverlay}>
           <View style={styles.saveInputContainer}>
-            <Text style={styles.saveInputLabel}>Nombre de la sugerencia</Text>
-            <TextInput
-              style={styles.saveInput}
-              placeholder="Ej: Versión grave"
-              placeholderTextColor="#999999"
-              value={newSuggestionName}
-              onChangeText={setNewSuggestionName}
-              autoFocus
-            />
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.saveInputLabel}>Nombre de la sugerencia</Text>
+              <TextInput
+                style={styles.saveInput}
+                placeholder="Ej: Versión grave"
+                placeholderTextColor="#999999"
+                value={newSuggestionName}
+                onChangeText={setNewSuggestionName}
+                autoFocus
+              />
+
+              <Text style={styles.saveInputLabel}>Capo</Text>
+              <TouchableOpacity
+                style={styles.capoDropdownButton}
+                onPress={() => setShowCapoDropdown(!showCapoDropdown)}>
+                <Text style={styles.capoDropdownButtonText}>
+                  {manualCapo === 0 ? 'Sin capo' : `Capo ${manualCapo}`}
+                </Text>
+                <Text style={styles.capoDropdownArrow}>
+                  {showCapoDropdown ? '▴' : '▾'}
+                </Text>
+              </TouchableOpacity>
+              {showCapoDropdown && (
+                <View style={styles.capoDropdownList}>
+                  <ScrollView style={styles.capoDropdownScroll} nestedScrollEnabled>
+                    {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(num => (
+                      <TouchableOpacity
+                        key={num}
+                        style={[
+                          styles.capoDropdownItem,
+                          manualCapo === num && styles.capoDropdownItemActive,
+                        ]}
+                        onPress={() => {
+                          setManualCapo(num);
+                          setShowCapoDropdown(false);
+                        }}>
+                        <Text
+                          style={[
+                            styles.capoDropdownItemText,
+                            manualCapo === num && styles.capoDropdownItemTextActive,
+                          ]}>
+                          {num === 0 ? 'Sin capo' : `Capo ${num}`}
+                        </Text>
+                        {manualCapo === num && (
+                          <Text style={styles.capoDropdownCheck}>✓</Text>
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+            </ScrollView>
+
             <View style={styles.saveInputButtons}>
               <TouchableOpacity
                 style={styles.saveInputCancel}
                 onPress={() => {
                   setShowSaveInput(false);
                   setNewSuggestionName('');
+                  setManualCapo(0);
+                  setShowCapoDropdown(false);
                 }}>
                 <Text style={styles.saveInputCancelText}>Cancelar</Text>
               </TouchableOpacity>
@@ -497,10 +598,179 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
           </View>
         </View>
       </Modal>
+
+      {/* Modal de Recomendaciones */}
+      <Modal
+        visible={showRecomendacionesModal}
+        animationType="slide"
+        onRequestClose={() => setShowRecomendacionesModal(false)}>
+        <View style={styles.recomendacionesContainer}>
+          <View style={styles.recomendacionesHeader}>
+            <TouchableOpacity
+              onPress={() => setShowRecomendacionesModal(false)}
+              style={styles.recomendacionesCloseButton}>
+              <Text style={styles.recomendacionesCloseText}>✕</Text>
+            </TouchableOpacity>
+            <Text style={styles.recomendacionesTitle}>Recomendaciones</Text>
+            <View style={{width: 40}} />
+          </View>
+
+          {chordProText ? (() => {
+            const originalChords = extractUniqueChords(chordProText);
+            const currentChords = transposeOffset === 0
+              ? originalChords
+              : originalChords.map(c => transposeChord(c, transposeOffset, true));
+
+            if (isAllEasy(currentChords)) {
+              return (
+                <View style={styles.recomendacionesEmptyContainer}>
+                  <Text style={styles.recomendacionesEmptyIcon}>✓</Text>
+                  <Text style={styles.recomendacionesEmptyTitle}>¡Todo listo!</Text>
+                  <Text style={styles.recomendacionesEmptyText}>
+                    Todos los acordes son fáciles. No se necesita capo.
+                  </Text>
+                </View>
+              );
+            }
+
+            const capoSuggestion = suggestCapo(currentChords);
+            if (!capoSuggestion) {
+              return (
+                <View style={styles.recomendacionesEmptyContainer}>
+                  <Text style={styles.recomendacionesEmptyIcon}>🎵</Text>
+                  <Text style={styles.recomendacionesEmptyTitle}>Sin recomendación</Text>
+                  <Text style={styles.recomendacionesEmptyText}>
+                    No se pudo encontrar una posición de capo óptima para estos acordes.
+                  </Text>
+                </View>
+              );
+            }
+
+            return (
+              <View style={styles.recomendacionesContent}>
+                <Text style={styles.recomendacionesSectionTitle}>Sugerencia de Capo</Text>
+                <TouchableOpacity
+                  style={styles.recomendacionesCard}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setSavedCapoActive(true);
+                    setActiveSavedCapo(capoSuggestion.capo);
+                    setTransposeOffset(prev => prev - capoSuggestion.capo);
+                    setShowRecomendacionesModal(false);
+                  }}>
+                  <View style={styles.recomendacionesCardIconContainer}>
+                    <Text style={styles.recomendacionesCardIcon}>🎸</Text>
+                  </View>
+                  <View style={styles.recomendacionesCardContent}>
+                    <Text style={styles.recomendacionesCardTitle}>
+                      Capo {capoSuggestion.capo}
+                    </Text>
+                    <Text style={styles.recomendacionesCardSubtitle}>
+                      {capoSuggestion.displayChords.join(', ')}
+                    </Text>
+                  </View>
+                  <Text style={styles.recomendacionesCardArrow}>›</Text>
+                </TouchableOpacity>
+                <Text style={styles.recomendacionesHint}>
+                  Toca la card para aplicar esta configuración
+                </Text>
+              </View>
+            );
+          })() : (
+            <View style={styles.recomendacionesEmptyContainer}>
+              <Text style={styles.recomendacionesEmptyIcon}>🎵</Text>
+              <Text style={styles.recomendacionesEmptyTitle}>Sin acordes</Text>
+              <Text style={styles.recomendacionesEmptyText}>
+                No hay acordes disponibles para este canto.
+              </Text>
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      {/* Modal de Guardados */}
+      <Modal
+        visible={showGuardadosModal}
+        animationType="slide"
+        onRequestClose={() => setShowGuardadosModal(false)}>
+        <View style={styles.guardadosContainer}>
+          <View style={styles.guardadosHeader}>
+            <TouchableOpacity
+              onPress={() => setShowGuardadosModal(false)}
+              style={styles.guardadosCloseButton}>
+              <Text style={styles.guardadosCloseText}>✕</Text>
+            </TouchableOpacity>
+            <Text style={styles.guardadosTitle}>Guardados</Text>
+            <TouchableOpacity
+              style={styles.guardadosAddButton}
+              onPress={() => {
+                setShowGuardadosModal(false);
+                setManualCapo(activeSavedCapo ?? 0);
+                setShowCapoDropdown(false);
+                setShowSaveInput(true);
+              }}>
+              <Text style={styles.guardadosAddButtonText}>+</Text>
+            </TouchableOpacity>
+          </View>
+
+          {savedSuggestions.length > 0 ? (
+            <View style={styles.guardadosContent}>
+              <Text style={styles.guardadosSectionTitle}>Configuraciones guardadas</Text>
+              {savedSuggestions.map((saved, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={styles.guardadosCard}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setSavedCapoActive(true);
+                    setActiveSavedCapo(saved.capo);
+                    setTransposeOffset(saved.offset);
+                    setShowGuardadosModal(false);
+                  }}
+                  onLongPress={() => handleDeleteCapoSuggestion(idx)}>
+                  <View style={styles.guardadosCardIconContainer}>
+                    <Text style={styles.guardadosCardIcon}>💾</Text>
+                  </View>
+                  <View style={styles.guardadosCardContent}>
+                    <Text style={styles.guardadosCardTitle}>{saved.name}</Text>
+                    <Text style={styles.guardadosCardSubtitle}>
+                      {saved.capo > 0 ? `Capo ${saved.capo}` : 'Sin capo'}
+                      {saved.offset !== 0 ? ` · ${saved.offset > 0 ? '+' : ''}${saved.offset} semitonos` : ''}
+                    </Text>
+                  </View>
+                  <Text style={styles.guardadosCardArrow}>›</Text>
+                </TouchableOpacity>
+              ))}
+              <Text style={styles.guardadosHint}>
+                Toca para aplicar · Mantén presionado para eliminar
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.guardadosEmptyContainer}>
+              <Text style={styles.guardadosEmptyIcon}>📂</Text>
+              <Text style={styles.guardadosEmptyTitle}>Sin configuraciones</Text>
+              <Text style={styles.guardadosEmptyText}>
+                Aún no has guardado ninguna configuración. Usa el botón "+" para guardar una.
+              </Text>
+            </View>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 };
 
+/**
+ * Componente que renderiza una línea del ChordPro.
+ * Posiciona los acordes encima de la letra usando espacios.
+ *
+ * Ejemplo visual:
+ *   [Am]  [Do7]
+ *   La raíz del
+ *
+ * Los acordes se alinean con su posición en la letra
+ * usando caracteres de espacio.
+ */
 const ChordProLineView: React.FC<{line: ChordProParsedLine}> = ({line}) => {
   if (line.type === 'empty') {
     return <View style={styles.chordProEmptyLine} />;
@@ -946,5 +1216,374 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  capoDropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  capoDropdownButtonText: {
+    color: '#000000',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  capoDropdownArrow: {
+    color: '#999999',
+    fontSize: 14,
+  },
+  capoDropdownList: {
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
+    marginBottom: 16,
+    maxHeight: 200,
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+  },
+  capoDropdownScroll: {
+    maxHeight: 200,
+  },
+  capoDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  capoDropdownItemActive: {
+    backgroundColor: '#F0F7FF',
+  },
+  capoDropdownItemText: {
+    color: '#333333',
+    fontSize: 14,
+    fontWeight: '400',
+  },
+  capoDropdownItemTextActive: {
+    color: '#1A73E8',
+    fontWeight: '600',
+  },
+  capoDropdownCheck: {
+    color: '#1A73E8',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  menuButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  menuButtonText: {
+    color: COLORS.text,
+    fontSize: 20,
+  },
+  dropdownContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
+  },
+  dropdownBackdrop: {
+    flex: 1,
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: 56,
+    right: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 6,
+    minWidth: 200,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  dropdownItemIcon: {
+    fontSize: 18,
+    width: 24,
+    textAlign: 'center',
+  },
+  dropdownItemText: {
+    color: '#000000',
+    fontSize: 15,
+    fontWeight: '500',
+    flex: 1,
+  },
+  dropdownCheck: {
+    color: COLORS.accent,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  // Estilos del modal de Recomendaciones
+  recomendacionesContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  recomendacionesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  recomendacionesCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recomendacionesCloseText: {
+    color: COLORS.textSecondary,
+    fontSize: 18,
+  },
+  recomendacionesTitle: {
+    color: COLORS.text,
+    fontSize: 20,
+    fontWeight: '700',
+    flex: 1,
+    textAlign: 'center',
+  },
+  recomendacionesContent: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  recomendacionesSectionTitle: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 12,
+  },
+  recomendacionesCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  recomendacionesCardIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+    backgroundColor: COLORS.accentDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  recomendacionesCardIcon: {
+    fontSize: 28,
+  },
+  recomendacionesCardContent: {
+    flex: 1,
+  },
+  recomendacionesCardTitle: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  recomendacionesCardSubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+  },
+  recomendacionesCardArrow: {
+    color: COLORS.textSecondary,
+    fontSize: 28,
+    fontWeight: '300',
+    marginLeft: 8,
+  },
+  recomendacionesHint: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 16,
+    opacity: 0.7,
+  },
+  recomendacionesEmptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+  },
+  recomendacionesEmptyIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+    opacity: 0.6,
+  },
+  recomendacionesEmptyTitle: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  recomendacionesEmptyText: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  // Estilos del modal de Guardados
+  guardadosContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  guardadosHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  guardadosCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guardadosCloseText: {
+    color: COLORS.textSecondary,
+    fontSize: 18,
+  },
+  guardadosTitle: {
+    color: COLORS.text,
+    fontSize: 20,
+    fontWeight: '700',
+    flex: 1,
+    textAlign: 'center',
+  },
+  guardadosAddButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guardadosAddButtonText: {
+    color: COLORS.background,
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  guardadosContent: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  guardadosSectionTitle: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 12,
+  },
+  guardadosCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  guardadosCardIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+    backgroundColor: COLORS.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  guardadosCardIcon: {
+    fontSize: 28,
+  },
+  guardadosCardContent: {
+    flex: 1,
+  },
+  guardadosCardTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  guardadosCardSubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+  },
+  guardadosCardArrow: {
+    color: COLORS.textSecondary,
+    fontSize: 28,
+    fontWeight: '300',
+    marginLeft: 8,
+  },
+  guardadosHint: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 16,
+    opacity: 0.7,
+  },
+  guardadosEmptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+  },
+  guardadosEmptyIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+    opacity: 0.6,
+  },
+  guardadosEmptyTitle: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  guardadosEmptyText: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

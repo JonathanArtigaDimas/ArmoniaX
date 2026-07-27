@@ -1,15 +1,43 @@
+/**
+ * metronomeSound.ts - Generación y reproducción de sonidos para metrónomo y afinador
+ *
+ * Este módulo genera sonidos WAV programáticamente (sin archivos de audio externos):
+ *
+ * 1. Tick normal (1200Hz, 20ms) - sonido de metrónomo estándar
+ * 2. Tick acento (1800Hz, 25ms) - sonido de primer tiempo
+ * 3. Campana de afinado (C-E-G, acorde de Do mayor) - sonido al afinar
+ *
+ * Los sonidos se generan como WAV con envelope ADSR (Attack, Decay, Sustain, Release)
+ * y se escriben al filesystem de la app para reproducción via react-native-sound.
+ *
+ * La inicialización se hace una vez (initSounds) y los sonidos se reutilizan.
+ */
 import Sound from 'react-native-sound';
 import RNFS from 'react-native-fs';
 
+// Configurar categoría de audio para que funcione con el interruptor de silencio
 Sound.setCategory('Playback');
 
+/** Directorio de caché de sonidos generados */
 const CACHE_DIR = `${RNFS.CachesDirectoryPath}/sounds`;
+/** Ruta del tick normal en el filesystem */
 const NORMAL_TICK_PATH = `${CACHE_DIR}/tick_normal.wav`;
+/** Ruta del tick de acento (primer tiempo) */
 const ACCENT_TICK_PATH = `${CACHE_DIR}/tick_accent.wav`;
+/** Ruta del sonido de campana de afinado (acorde de Do mayor) */
 const TUNED_PATH = `${CACHE_DIR}/tuned.wav`;
 
+// Declaración de btoa para conversión base64 en React Native
 declare const btoa: (input: string) => string;
 
+/**
+ * Escribe el encabezado WAV estándar (44 bytes) en un DataView.
+ * Formato: PCM mono 16-bit a la frecuencia de muestreo especificada.
+ *
+ * @param view - DataView donde escribir
+ * @param dataSize - Tamaño de los datos de audio en bytes
+ * @param sampleRate - Frecuencia de muestreo (44100 Hz estándar)
+ */
 function writeWavHeader(view: DataView, dataSize: number, sampleRate: number): void {
   const writeString = (offset: number, str: string) => {
     for (let i = 0; i < str.length; i++) {
@@ -32,6 +60,25 @@ function writeWavHeader(view: DataView, dataSize: number, sampleRate: number): v
   view.setUint32(40, dataSize, true);
 }
 
+/**
+ * Genera datos WAV programáticamente con configuración de sonido personalizable.
+ *
+ * El sonido se construye muestra por muestra usando:
+ * - Osciladores senoidales con armónicos
+ * - Envelope ADSR para dar forma al sonido
+ * - Amplitud controlada por volumen
+ *
+ * @param config - Configuración del sonido:
+ *   - frequency: Frecuencia en Hz
+ *   - durationMs: Duración en milisegundos
+ *   - volume: Volumen (0-1, default 0.3)
+ *   - attackMs: Tiempo de ataque en ms (default 2)
+ *   - decayMs: Tiempo de decaimiento en ms (default 15)
+ *   - sustainLevel: Nivel de sostenimiento (0-1, default 0.3)
+ *   - harmonics: Array de amplitudes de armónicos (default [1] = solo fundamental)
+ * @param sampleRate - Frecuencia de muestreo (default 44100)
+ * @returns ArrayBuffer con datos WAV completos (encabezado + audio)
+ */
 function generateWavData(
   config: {
     frequency: number;
@@ -89,6 +136,20 @@ function generateWavData(
   return buffer;
 }
 
+/**
+ * Genera una campana de acorde con múltiples notas superpuestas.
+ * Usado para el sonido de "afinado" - suena un acorde de Do mayor (C-E-G).
+ *
+ * Cada nota tiene:
+ * - Ataque rápido (5ms)
+ * - Decaimiento exponencial
+ * - Armónicos para enriquecer el timbre
+ *
+ * @param frequencies - Array de frecuencias (ej: [523.25, 659.25, 783.99] = Do-Mi-Sol)
+ * @param noteDurationMs - Duración de cada nota individual en ms
+ * @param sampleRate - Frecuencia de muestreo
+ * @returns ArrayBuffer con WAV de la campana
+ */
 function generateChimeWav(
   frequencies: number[],
   noteDurationMs: number,
@@ -126,6 +187,10 @@ function generateChimeWav(
   return buffer;
 }
 
+/**
+ * Convierte un ArrayBuffer a string base64.
+ * Necesario para escribir datos binarios via RNFS.writeFile.
+ */
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = '';
@@ -135,11 +200,21 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
+/** Instancia del sonido de tick normal (se reutiliza) */
 let normalSound: Sound | null = null;
+/** Instancia del sonido de tick de acento (se reutiliza) */
 let accentSound: Sound | null = null;
+/** Instancia del sonido de campana de afinado (se reutiliza) */
 let tunedSound: Sound | null = null;
+/** Flag de inicialización para evitar crear sonidos múltiples veces */
 let isInitialized = false;
 
+/**
+ * Inicializa los sonidos del metrónomo y afinador.
+ * Genera archivos WAV temporales en el caché de la app.
+ * Se ejecuta una vez al inicio (App.tsx y pantallas que usan audio).
+ * Segura de llamar múltiples veces (no regenera si ya está inicializado).
+ */
 export async function initSounds(): Promise<void> {
   if (isInitialized) return;
 
@@ -189,6 +264,11 @@ export async function initSounds(): Promise<void> {
   }
 }
 
+/**
+ * Reproduce un tick del metrónomo.
+ * @param isAccent - Si es true, suena el tick de acento (más agudo)
+ *                   Si es false, suena el tick normal
+ */
 export function playTick(isAccent: boolean): void {
   const sound = isAccent ? accentSound : normalSound;
   if (sound) {
@@ -197,6 +277,11 @@ export function playTick(isAccent: boolean): void {
   }
 }
 
+/**
+ * Reproduce el sonido de campana de afinado.
+ * Suena un acorde de Do mayor (C-E-G) para indicar que la nota está afinada.
+ * Se llama desde MainScreen cuando isTuned cambia a true.
+ */
 export function playTunedSound(): void {
   if (tunedSound) {
     tunedSound.setCurrentTime(0);
@@ -204,6 +289,11 @@ export function playTunedSound(): void {
   }
 }
 
+/**
+ * Libera los recursos de audio.
+ * Se llama al desmontar pantallas que usan audio (cleanup de useEffect).
+ * Los sonidos se regenerarán la próxima vez que se llame initSounds().
+ */
 export function cleanupSounds(): void {
   if (normalSound) {
     normalSound.release();

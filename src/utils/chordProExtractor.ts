@@ -1,11 +1,47 @@
+/**
+ * chordProExtractor.ts - Extracción y caché de datos ChordPro desde PDF
+ *
+ * Este módulo maneja la extracción de acordes en formato ChordPro
+ * desde el PDF del himnario usando el módulo nativo PDFScanner.
+ *
+ * Flujo:
+ * 1. PDFScanner extrae líneas alineadas (letra + posiciones de acordes)
+ * 2. buildChordProFromAligned() las convierte a formato ChordPro
+ * 3. Se guarda en AsyncStorage para persistencia
+ * 4. Se mantiene un caché en memoria (extractedCache) para acceso rápido
+ *
+ * La extracción se realiza en segundo plano cuando el usuario
+ * selecciona una canción que no tiene ChordPro precompilado.
+ */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {ChordProAlignedLine, extractChordProAligned} from './PDFScanner';
 import {normalize} from './textUtils';
 
+/** Clave de AsyncStorage para el caché de ChordPro extraído */
 const STORAGE_KEY = 'extracted_chord_pros';
 
+/**
+ * Caché en memoria de ChordPro extraídos.
+ * Clave: nombre normalizado de la canción
+ * Valor: texto en formato ChordPro
+ * Se carga al inicio de la app (loadAllExtractedChordPros)
+ */
 export const extractedCache: Record<string, string> = {};
 
+/**
+ * Convierte líneas alineadas del PDF a formato ChordPro.
+ *
+ * Formato de salida:
+ * {title: Nombre de la canción}
+ *
+ * [Am]Letra de la canción
+ * [Re][Sol]Otra línea con acordes
+ * Letra sin acordes
+ *
+ * @param lines - Líneas alineadas del PDF (letra + posiciones de acordes)
+ * @param title - Título de la canción (opcional)
+ * @returns Texto en formato ChordPro
+ */
 export function buildChordProFromAligned(
   lines: ChordProAlignedLine[],
   title?: string,
@@ -45,6 +81,14 @@ export function buildChordProFromAligned(
   return parts.join('\n');
 }
 
+/**
+ * Extrae y construye ChordPro desde páginas del PDF.
+ * Orquesta: extracción nativa → construcción ChordPro.
+ *
+ * @param pages - Números de página a extraer
+ * @param title - Título de la canción (opcional)
+ * @returns Texto en formato ChordPro
+ */
 export async function extractAndBuildChordPro(
   pages: number[],
   title?: string,
@@ -53,6 +97,13 @@ export async function extractAndBuildChordPro(
   return buildChordProFromAligned(aligned, title);
 }
 
+/**
+ * Guarda un ChordPro extraído en AsyncStorage y en el caché de memoria.
+ * Si el texto está vacío, elimina la entrada.
+ *
+ * @param songName - Nombre de la canción
+ * @param text - Texto en formato ChordPro
+ */
 export async function saveExtractedChordPro(
   songName: string,
   text: string,
@@ -75,6 +126,13 @@ export async function saveExtractedChordPro(
   } catch {}
 }
 
+/**
+ * Carga el ChordPro extraído de una canción.
+ * Prioridad: caché de memoria > AsyncStorage
+ *
+ * @param songName - Nombre de la canción
+ * @returns Texto ChordPro o null si no existe
+ */
 export async function loadExtractedChordPro(
   songName: string,
 ): Promise<string | null> {
@@ -92,6 +150,10 @@ export async function loadExtractedChordPro(
   return null;
 }
 
+/**
+ * Elimina el ChordPro extraído de una canción.
+ * Borra tanto de AsyncStorage como del caché de memoria.
+ */
 export async function removeExtractedChordPro(
   songName: string,
 ): Promise<void> {
@@ -107,6 +169,10 @@ export async function removeExtractedChordPro(
   } catch {}
 }
 
+/**
+ * Carga todos los ChordPro extraídos del AsyncStorage al caché de memoria.
+ * Se ejecuta al inicio de la app (App.tsx) para tener datos disponibles rápido.
+ */
 export async function loadAllExtractedChordPros(): Promise<void> {
   try {
     const json = await AsyncStorage.getItem(STORAGE_KEY);

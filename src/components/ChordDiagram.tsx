@@ -1,39 +1,73 @@
+/**
+ * ChordDiagram.tsx - Diagrama visual de acordes de guitarra/charango
+ *
+ * Renderiza un diagrama SVG-like de un acorde musical con:
+ * - Cuerdas verticales (5 para charango, 6 para guitarra)
+ * - Trastes horizontales (5 trastes visibles)
+ * - Puntos verdes en las posiciones de los dedos
+ * - Líneas de cejilla (cuando un dedo cubre múltiples cuerdas)
+ * - Marcador "X" para cuerdas muteadas
+ * - Marcador "O" para cuerdas abiertas
+ * - Número de traste cuando el acorde empieza en traste > 1
+ *
+ * El diagrama calcula automáticamente:
+ * - Rango de trastes a mostrar (si el acorde usa trastes altos)
+ * - Si necesita cejilla (cuando múltiples cuerdas están en el mismo traste)
+ * - Posiciones relativas de los puntos
+ *
+ * Usado en: ChordLibraryScreen.tsx (biblioteca de acordes)
+ */
 import React from 'react';
 import {View, Text, StyleSheet} from 'react-native';
 import {COLORS} from '../constants/theme';
 
+/** Información de una cejilla detectada */
 interface BarreInfo {
-  fret: number;
-  from: number;
-  to: number;
+  fret: number;  // Traste donde está la cejilla
+  from: number;  // Cuerda de inicio (índice izquierdo)
+  to: number;    // Cuerda de fin (índice derecho)
 }
 
+/** Props del diagrama de acorde */
 interface ChordDiagramProps {
-  name: string;
-  frets: number[];
-  stringCount?: number;
+  name: string;       // Nombre del acorde para mostrar (ej: "Do", "La-")
+  frets: number[];    // Array de posiciones: -1=muteada, 0=abierta, 1-7=traste
+  stringCount?: number; // Número de cuerdas (default 6 para guitarra)
 }
 
+/**
+ * Diagrama visual de acorde musical.
+ * Calcula cejillas, rangos de trastes y renderiza con Views posicionadas absolutamente.
+ */
 export const ChordDiagram: React.FC<ChordDiagramProps> = ({
   name,
   frets,
   stringCount = 6,
 }) => {
-  const gridWidth = 70;
-  const gridHeight = 65;
-  const stringSpacing = gridWidth / (stringCount - 1);
-  const fretSpacing = gridHeight / 5;
-  const markerY = -18;
+  // Dimensiones del diagrama
+  const gridWidth = 70;   // Ancho del grid de cuerdas
+  const gridHeight = 65;  // Alto del grid de trastes
+  const stringSpacing = gridWidth / (stringCount - 1); // Espacio entre cuerdas
+  const fretSpacing = gridHeight / 5;                   // Espacio entre trastes
+  const markerY = -18;                                   // Posición Y de marcadores X/O
 
-  const activeFretsList = frets.filter(f => f > 0);
-  const minFret = activeFretsList.length > 0 ? Math.min(...activeFretsList) : 0;
-  const maxFret = activeFretsList.length > 0 ? Math.max(...activeFretsList) : 0;
+  // Calcular rango de trastes a mostrar
+  const activeFretsList = frets.filter(f => f > 0);  // Trastes con dedo (no abiertos ni muteados)
+  const minFret = activeFretsList.length > 0 ? Math.min(...activeFretsList) : 0; // Traste más bajo
+  const maxFret = activeFretsList.length > 0 ? Math.max(...activeFretsList) : 0; // Traste más alto
 
+  // Si el acorde usa trastes > 5, ajustar el grid para mostrarlos
   const gridStart = maxFret <= 5 ? 0 : maxFret - 5;
 
+  // Mostrar número de traste si el acorde empieza en traste > 1
   const showFretNum = minFret > 1;
   const fretNumValue = minFret;
 
+  /**
+   * Detectar cejillas automáticamente.
+   * Una cejilla es cuando un dedo cubre múltiples cuerdas en el mismo traste.
+   * Se detecta buscando cuerdas consecutivas con el mismo traste mínimo.
+   */
   const barres: BarreInfo[] = (() => {
     const activeFrets = frets
       .map((f, i) => (f > 0 ? {fret: f, index: i} : null))
@@ -59,6 +93,7 @@ export const ChordDiagram: React.FC<ChordDiagramProps> = ({
     return [{fret: minF, from, to}];
   })();
 
+  // Cuerdas que forman parte de una cejilla (no se dibujan puntos individuales)
   const barreStrings = new Set(
     barres.flatMap(b => {
       const indices: number[] = [];

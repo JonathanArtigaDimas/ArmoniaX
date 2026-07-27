@@ -1,19 +1,43 @@
+/**
+ * TunerDial.tsx - Dial animado del afinador con aguja semicircular
+ *
+ * Componente visual que muestra la desviación de cents como una aguja
+ * que se mueve sobre un arco semicircular.
+ *
+ * Características:
+ * - Aguja animada con Animated.spring (suave y con rebote)
+ * - Arco con marcas de escala (♭♭, ♭, ✓, ♯, ♯♯)
+ * - Punto central que cambia de color según afinación
+ * - Ticks de referencia en posiciones clave
+ *
+ * Rango visual: -50 a +50 cents (se puede configurar)
+ * Ángulo de la aguja: -90° (izq) a +90° (der)
+ *
+ * Usado en: MainScreen.tsx (pantalla del afinador)
+ */
 import React, {useEffect, useRef} from 'react';
 import {View, Text, Animated, StyleSheet} from 'react-native';
 import {COLORS} from '../constants/theme';
 import {getCentsColor} from '../utils/tunerUtils';
 
+/** Props del dial del afinador */
 interface TunerDialProps {
-  cents: number;
-  minCents?: number;
-  maxCents?: number;
-  isTuned?: boolean;
-  tolerance?: number;
+  cents: number;        // Desviación actual en cents
+  minCents?: number;    // Límite inferior del arco (default -50)
+  maxCents?: number;    // Límite superior del arco (default +50)
+  isTuned?: boolean;    // Si está afinado
+  tolerance?: number;   // Tolerancia para colores (default 10)
 }
 
+/** Ángulo de la aguja en la posición más a la izquierda (♭♭) */
 const NEEDLE_MIN_ANGLE = -90;
+/** Ángulo de la aguja en la posición más a la derecha (♯♯) */
 const NEEDLE_MAX_ANGLE = 90;
 
+/**
+ * Dial visual del afinador con aguja animada.
+ * La aguja se mueve suavemente usando Animated.spring.
+ */
 export const TunerDial: React.FC<TunerDialProps> = ({
   cents,
   minCents = -50,

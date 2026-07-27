@@ -1,3 +1,29 @@
+/**
+ * BackupScreen.tsx - Pantalla de copia de seguridad
+ *
+ * Permite exportar e importar todos los datos de la app como archivo JSON.
+ *
+ * Contenido del backup:
+ * - Cantos personalizados y carpetas
+ * - Notas por canto
+ * - ChordPro extraídos desde PDF
+ * - Configuración (precisión, Hz, notación)
+ * - Sugerencias de capo guardadas
+ *
+ * Exportación:
+ * 1. Recopila todas las claves de AsyncStorage
+ * 2. Crea archivo JSON con metadatos
+ * 3. Abre sheet de compartir nativo
+ * 4. Usuario puede guardar o enviar por WhatsApp/email
+ *
+ * Importación:
+ * 1. Abre picker de documentos (solo .json)
+ * 2. Valida que sea backup de ArmoniaX
+ * 3. Pide confirmación (reemplaza toda la data)
+ * 4. Reemplaza claves en AsyncStorage
+ *
+ * Usado como modal desde ConfiguracionScreen.
+ */
 import React, {useState} from 'react';
 import {
   View,
@@ -15,6 +41,10 @@ interface BackupScreenProps {
   onClose: () => void;
 }
 
+/**
+ * Pantalla de copia de seguridad.
+ * Exporta/importa toda la data de la app como JSON.
+ */
 export const BackupScreen: React.FC<BackupScreenProps> = ({onClose}) => {
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);

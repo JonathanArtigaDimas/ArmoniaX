@@ -1,25 +1,62 @@
+/**
+ * chordProParser.ts - Parser de formato ChordPro
+ *
+ * Formato ChordPro: estándar para letras de canciones con acordes.
+ * Los acordes van entre corchetes: [Am] [Do7] [Sol]
+ * Los metadatos van entre llaves: {title: Nombre de la canción}
+ *
+ * Funcionalidades:
+ * - Parseo de líneas a tipos (vacía, metadata, chordpro, plain)
+ * - Transporte de acordes inline
+ * - Extracción de acordes únicos
+ * - Sugerencia de capo para acordes difíciles
+ * - Detección de acordes fáciles
+ */
 import {transposeChord} from './chordTransposer';
 
+/** Patrón para detectar acordes entre corchetes: [Am], [Do7], etc. */
 const CHORD_IN_BRACKET = /\[([^\]]+)\]/g;
 
+/** Patrón para metadatos ChordPro: {title: Nombre}, {subtitle: Subtítulo} */
 const METADATA_TAG = /^\{([^:]+):\s*(.+)\}$/;
 
+/** Metadatos extraídos de líneas {key: value} */
 export type ChordProLineMetadata = {
-  title?: string;
-  subtitle?: string;
+  title?: string;    // Título de la canción ({title: Nombre})
+  subtitle?: string; // Subtítulo ({subtitle: Subtítulo})
 };
 
+/**
+ * Línea parseada del ChordPro.
+ * Tipos posibles:
+ * - 'empty': línea vacía
+ * - 'metadata': línea de metadatos {key: value}
+ * - 'chordpro': línea con acordes [Am] y letra
+ * - 'plain': línea solo de texto sin acordes
+ */
 export type ChordProParsedLine =
   | {type: 'empty'; raw: string}
   | {type: 'metadata'; key: string; value: string; raw: string}
   | {type: 'chordpro'; lyricLine: string; chordPositions: {chord: string; position: number}[]; raw: string}
   | {type: 'plain'; text: string; raw: string};
 
+/**
+ * Detecta si el texto contiene acordes en notación española.
+ * Usado para decidir si transportar a español o inglés.
+ */
 function hasSpanishChords(text: string): boolean {
   const lower = text.toLowerCase();
   return /\b(do|re|mi|fa|sol|la|si)[#b]?\b/.test(lower);
 }
 
+/**
+ * Detecta si un texto está en formato ChordPro.
+ * Cuenta el número de acordes entre corchetes [chord].
+ * Si hay al menos 1, se considera ChordPro.
+ *
+ * @param text - Texto a analizar
+ * @returns true si parece ser ChordPro
+ */
 export function isChordPro(text: string): boolean {
   const lines = text.split('\n');
   let bracketCount = 0;
@@ -32,6 +69,20 @@ export function isChordPro(text: string): boolean {
   return bracketCount >= 1;
 }
 
+/**
+ * Parsea un texto en formato ChordPro a un array de líneas tipadas.
+ *
+ * @param text - Texto completo en formato ChordPro
+ * @param semitones - Semitonos para transportar acordes (0 = sin cambio)
+ * @returns Array de líneas parseadas con su tipo y contenido
+ *
+ * El parser:
+ * 1. Detecta líneas vacías
+ * 2. Extrae metadatos {key: value}
+ * 3. Parsea acordes [chord] y sus posiciones en la letra
+ * 4. Identifica líneas de texto plano
+ * 5. Transporta acordes si se solicita
+ */
 export function parseChordPro(
   text: string,
   semitones: number = 0,
@@ -89,6 +140,10 @@ export function parseChordPro(
   });
 }
 
+/**
+ * Extrae metadatos (título y subtítulo) de las líneas parseadas.
+ * Busca líneas con key="title" o key="subtitle".
+ */
 export function extractMetadata(lines: ChordProParsedLine[]): ChordProLineMetadata {
   const meta: ChordProLineMetadata = {};
   for (const line of lines) {
@@ -100,16 +155,35 @@ export function extractMetadata(lines: ChordProParsedLine[]): ChordProLineMetada
   return meta;
 }
 
+/**
+ * Filtra las líneas para mostrar (excluye metadatos).
+ * Usado para renderizar solo la letra y acordes.
+ */
 export function getDisplayLines(lines: ChordProParsedLine[]): ChordProParsedLine[] {
   return lines.filter(l => l.type !== 'metadata');
 }
 
+/**
+ * Set de acordes considerados "fáciles" para guitarra.
+ * Un acorde es fácil si se puede tocar sin cejilla compleja.
+ * Incluye: Do, Re, Mi, Fa, Sol, La, Si (mayores)
+ *          Re-, Mi-, La- (menores)
+ *          Do7-Si7 (séptimas)
+ */
 const EASY_CHORDS = new Set([
   'Do', 'Re', 'Mi', 'Fa', 'Sol', 'La', 'Si',
   'Re-', 'Mi-', 'La-',
   'Do7', 'Re7', 'Mi7', 'Fa7', 'Sol7', 'La7', 'Si7',
 ]);
 
+/**
+ * Extrae los acordes únicos de un texto ChordPro.
+ * Preserva el orden de primera aparición.
+ * Elimina duplicados (case-insensitive).
+ *
+ * @param text - Texto ChordPro con acordes entre corchetes
+ * @returns Array de acordes únicos en orden de aparición
+ */
 export function extractUniqueChords(text: string): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -125,10 +199,28 @@ export function extractUniqueChords(text: string): string[] {
   return result;
 }
 
+/**
+ * Verifica si todos los acordes del array son fáciles.
+ * Usado para decidir si mostrar sugerencia de capo.
+ *
+ * @param chords - Array de acordes a verificar
+ * @returns true si todos son fáciles (no necesita capo)
+ */
 export function isAllEasy(chords: string[]): boolean {
   return chords.length > 0 && chords.every(c => EASY_CHORDS.has(c));
 }
 
+/**
+ * Sugiere la posición de capo que convierte todos los acordes a fáciles.
+ * Prueba posiciones del 1 al 11 y retorna la primera donde todos son fáciles.
+ *
+ * @param chords - Array de acordes actuales
+ * @returns Objeto con posición de capo y acordes resultantes, o null si no hay solución
+ *
+ * Ejemplo: suggestCapo(["Fa", "Sol", "La-"])
+ * → { capo: 3, displayChords: ["Re", "Mi", "Fa-"] }
+ * (con capo en traste 3, los acordes se vuelven fáciles)
+ */
 export function suggestCapo(
   chords: string[],
 ): {capo: number; displayChords: string[]} | null {

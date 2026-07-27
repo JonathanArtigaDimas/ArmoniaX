@@ -1,3 +1,21 @@
+/**
+ * ChordLibraryScreen.tsx - Biblioteca visual de acordes
+ *
+ * Pantalla que muestra diagramas de acordes organizados por tipo
+ * para guitarra y charango.
+ *
+ * Características:
+ * - Selector de instrumento (Guitarra/Charango) con botones toggle
+ * - Grupos colapsables: Mayores, Menores, 7, 7m, 5, 5m, 6, 6m, 9, 9m
+ * - Diagramas de acordes renderizados con ChordDiagram
+ * - Por defecto muestra el grupo "Mayores" expandido
+ * - Toggle de grupos con animación
+ *
+ * Los datos vienen de guitarChords.ts y charangoChords.ts.
+ * Cada grupo contiene 12 acordes (uno por nota cromática).
+ *
+ * Usado como modal desde HerramientasScreen.
+ */
 import React, {useState} from 'react';
 import {
   View,
@@ -18,6 +36,10 @@ interface ChordLibraryScreenProps {
 
 type Instrument = 'guitarra' | 'charango';
 
+/**
+ * Pantalla de biblioteca de acordes con selector de instrumento.
+ * Muestra diagramas de acordes en grupos colapsables.
+ */
 export const ChordLibraryScreen: React.FC<ChordLibraryScreenProps> = ({
   onClose,
 }) => {

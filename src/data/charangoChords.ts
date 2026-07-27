@@ -1,9 +1,18 @@
+/**
+ * charangoChords.ts - Biblioteca de acordes de charango
+ *
+ * Contiene los acordes de charango organizados por tipo:
+ * Mayores, Menores y Séptimas.
+ *
+ * Cada acorde define 5 valores (una por cuerda):
+ * -1 = cuerda muteada (X), 0 = cuerda abierta (O), 1-7 = número de traste
+ *
+ * Afinación estándar andina: G C E A E (cuerdas 5→1, grave→agudo)
+ * frets[0] = cuerda 5 (Sol grave), frets[4] = cuerda 1 (Mi agudo)
+ */
 import {ChordData, ChordGroup} from './chordTypes';
 
-// Charango tuning: G C E A E (strings 5→1, low→high)
-// frets[0] = string 5 (G), frets[4] = string 1 (E)
-// -1 = muted (x), 0 = open (o), 1-7 = fret number
-
+// Acordes Mayores de charango
 const MAYORES: ChordData[] = [
   {name: 'C', label: 'Do', frets: [0, 0, 0, 3, 0]},
   {name: 'C#', label: 'Do#', frets: [1, 1, 1, 4, 1]},
@@ -19,6 +28,7 @@ const MAYORES: ChordData[] = [
   {name: 'B', label: 'Si', frets: [4, 3, 2, 2, 2]},
 ];
 
+// Acordes Menores de charango
 const MENORES: ChordData[] = [
   {name: 'Cm', label: 'Do-', frets: [0, 3, 3, 3, 3]},
   {name: 'C#m', label: 'Do#-', frets: [1, 1, 0, 4, 0]},
@@ -34,6 +44,7 @@ const MENORES: ChordData[] = [
   {name: 'Bm', label: 'Si-', frets: [4, 2, 2, 2, 2]},
 ];
 
+// Séptimas de charango
 const SETIMA: ChordData[] = [
   {name: 'C7', label: 'Do7', frets: [0, 0, 0, 1, 0]},
   {name: 'C#7', label: 'Do#7', frets: [1, 1, 1, 2, 1]},
@@ -49,6 +60,10 @@ const SETIMA: ChordData[] = [
   {name: 'B7', label: 'Si7', frets: [2, 3, 2, 2, 2]},
 ];
 
+/**
+ * Array de grupos de acordes de charango.
+ * Usado por ChordLibraryScreen cuando se selecciona charango.
+ */
 export const CHARANGO_CHORD_GROUPS: ChordGroup[] = [
   {title: 'Mayores', chords: MAYORES},
   {title: 'Menores', chords: MENORES},

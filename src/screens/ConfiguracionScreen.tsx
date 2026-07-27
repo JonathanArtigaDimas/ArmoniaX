@@ -1,16 +1,41 @@
+/**
+ * ConfiguracionScreen.tsx - Pantalla de configuración de la app
+ *
+ * Permite al usuario ajustar las preferencias de la aplicación:
+ *
+ * Sección General:
+ * - Precisión Profesional: reduce tolerancia de 10 a 3 cents
+ * - Calibrar: frecuencia de referencia (415-466 Hz)
+ * - Sistema de Notación: Español (Do-Re-Mi) o Inglés (C-D-E)
+ *
+ * Sección Datos:
+ * - Copia de seguridad: exportar/importar toda la data como JSON
+ *
+ * Cada configuración se guarda automáticamente en AsyncStorage
+ * via el SettingsContext.
+ *
+ * Las opciones de Hz y notación se muestran en modales bottom-sheet
+ * con FlatList para selección eficiente.
+ */
 import React, {useState} from 'react';
 import {View, Text, ScrollView, Switch, TouchableOpacity, Modal, FlatList, StyleSheet} from 'react-native';
 import {COLORS} from '../constants/theme';
 import {BackupScreen} from './BackupScreen';
 import {useSettings} from '../contexts/SettingsContext';
 
+/** Opciones de frecuencia de referencia: 415-466 Hz (rango completo) */
 const HZ_OPTIONS = Array.from({length: 52}, (_, i) => i + 415);
 
+/** Opciones de sistema de notación */
 const NOTATION_OPTIONS = [
   {value: 'spanish' as const, label: 'Español'},
   {value: 'english' as const, label: 'Inglés'},
 ];
 
+/**
+ * Pantalla de configuración de la app.
+ * Muestra opciones organizadas en secciones con modales de selección.
+ */
 export const ConfiguracionScreen: React.FC = () => {
   const {
     proPrecision,

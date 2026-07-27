@@ -1,8 +1,33 @@
+/**
+ * backupStorage.ts - Exportación e importación de copias de seguridad
+ *
+ * Permite respaldar y restaurar toda la data de la app:
+ * - Cantos personalizados y carpetas
+ * - Notas por canto
+ * - ChordPro extraídos desde PDF
+ * - Configuración (precisión, Hz de referencia, notación)
+ * - Sugerencias de capo
+ *
+ * Formato del archivo de backup:
+ * {
+ *   version: 1,
+ *   appName: "ArmoniaX",
+ *   exportedAt: "2026-07-18T12:00:00.000Z",
+ *   data: { "clave": "valor", ... }
+ * }
+ *
+ * Exportación: crea un JSON y usa el sheet de compartir nativo
+ * Importación: permite seleccionar un archivo JSON y reemplaza todos los datos
+ */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RNFS from 'react-native-fs';
 import Share from 'react-native-share';
 import {pick, keepLocalCopy, types} from '@react-native-documents/picker';
 
+/**
+ * Lista de claves de AsyncStorage que se incluyen en el backup.
+ * Si se agrega una nueva clave de configuración, agregarla aquí.
+ */
 const BACKUP_KEYS = [
   'custom_songs',
   'custom_folders',
@@ -15,13 +40,27 @@ const BACKUP_KEYS = [
   'saved_capo_suggestions',
 ];
 
+/** Estructura del archivo de backup JSON */
 type BackupData = {
-  version: number;
-  appName: string;
-  exportedAt: string;
-  data: Record<string, string | null>;
+  version: number;                    // Versión del formato (para futuras migraciones)
+  appName: string;                    // Nombre de la app (para validar que es de ArmoniaX)
+  exportedAt: string;                 // ISO timestamp de cuándo se exportó
+  data: Record<string, string | null>; // Clave → valor de AsyncStorage
 };
 
+/**
+ * Exporta todos los datos de la app como un archivo JSON compartible.
+ *
+ * Flujo:
+ * 1. Lee todas las claves de AsyncStorage
+ * 2. Crea el objeto BackupData con metadatos
+ * 3. Serializa a JSON formateado
+ * 4. Escribe en el caché de la app
+ * 5. Abre el sheet de compartir nativo (Share)
+ *
+ * El usuario puede guardar el archivo o enviarlo por WhatsApp/email.
+ * Nombre del archivo: armoniax_backup_YYYY-MM-DD.json
+ */
 export async function exportBackup(): Promise<void> {
   const data: Record<string, string | null> = {};
   for (const key of BACKUP_KEYS) {
@@ -50,6 +89,19 @@ export async function exportBackup(): Promise<void> {
   });
 }
 
+/**
+ * Importa un archivo de backup JSON y reemplaza todos los datos de la app.
+ *
+ * Flujo:
+ * 1. Abre el picker de documentos (solo archivos .json)
+ * 2. Copia el archivo al caché local
+ * 3. Lee y parsea el JSON
+ * 4. Valida que sea un backup de ArmoniaX
+ * 5. Reemplaza cada clave en AsyncStorage
+ * 6. Muestra resultado al usuario
+ *
+ * @returns Objeto con éxito/mensaje para mostrar al usuario
+ */
 export async function importBackup(): Promise<{
   success: boolean;
   message: string;

@@ -1,30 +1,67 @@
+/**
+ * MetronomeScreen.tsx - Metrónomo completo con BPM y compases
+ *
+ * Herramienta de tempo para músicos con todas las funcionalidades
+ * de un metrónomo profesional digital.
+ *
+ * Características:
+ * - Control de BPM: botones +/- y slider personalizado con PanResponder
+ * - Rango de tempo: 20-300 BPM
+ * - Compases: 2/4, 3/4, 4/4, 5/4, 6/8, 7/8
+ * - Presets de tempo musicales: Largo (50) a Prestissimo (200)
+ * - Visualización de beats: puntos que se iluminan en cada tiempo
+ * - Primer tiempo acentuado (marcador naranja)
+ * - Animación de pulso en el BPM actual
+ * - Sonidos generados programáticamente (sin archivos de audio externos)
+ *
+ * El metrónomo usa setInterval con cálculo preciso de intervalo:
+ * intervalo = (60 / BPM) * 1000 ms
+ *
+ * Usado como modal desde HerramientasScreen.
+ */
 import React, {useState, useRef, useEffect} from 'react';
 import {View, Text, TouchableOpacity, StyleSheet, Animated, PanResponder, ScrollView} from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {COLORS} from '../constants/theme';
 import {initSounds, playTick, cleanupSounds} from '../utils/metronomeSound';
 
+/** Compases musicales disponibles */
 const TIME_SIGNATURES = ['2/4', '3/4', '4/4', '5/4', '6/8', '7/8'];
 
+/** Extrae el número de beats de un compás (ej: "3/4" → 3) */
 const getBeatsFromSignature = (sig: string): number => {
   return parseInt(sig.split('/')[0], 10);
 };
 
+/** Props del metrónomo */
 interface MetronomeScreenProps {
-  onClose: () => void;
+  onClose: () => void; // Callback para cerrar el modal
 }
 
+/**
+ * Pantalla del metrónomo.
+ * Controla el tempo con BPM, compases y presets musicales.
+ */
 export const MetronomeScreen: React.FC<MetronomeScreenProps> = ({onClose}) => {
   const insets = useSafeAreaInsets();
-  const [bpm, setBpm] = useState(120);
-  const [timeSignature, setTimeSignature] = useState('4/4');
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentBeat, setCurrentBeat] = useState(0);
+  // Estado del metrónomo
+  const [bpm, setBpm] = useState(120);                   // Beats por minuto actual
+  const [timeSignature, setTimeSignature] = useState('4/4'); // Compás seleccionado
+  const [isPlaying, setIsPlaying] = useState(false);     // Si el metrónomo está sonando
+  const [currentBeat, setCurrentBeat] = useState(0);     // Beat actual (1-indexed)
 
+  // Animación de pulso para el BPM y los beats
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  // Referencia al intervalo del metrónomo
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Layout del slider para calcular posición del dedo
   const trackLayoutRef = useRef({x: 0, width: 0});
 
+  /**
+   * PanResponder para el slider de BPM personalizado.
+   * Permite arrastrar el thumb para cambiar el tempo.
+   * Calcula el BPM según la posición horizontal del dedo.
+   */
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -42,7 +79,9 @@ export const MetronomeScreen: React.FC<MetronomeScreenProps> = ({onClose}) => {
     }),
   ).current;
 
+  // Número de beats del compás actual (ej: 4 para 4/4)
   const beats = getBeatsFromSignature(timeSignature);
+  // Intervalo entre beats en milisegundos
   const beatInterval = (60 / bpm) * 1000;
 
   useEffect(() => {
@@ -107,6 +146,10 @@ export const MetronomeScreen: React.FC<MetronomeScreenProps> = ({onClose}) => {
     setBpm(Math.max(20, Math.min(300, target)));
   };
 
+  /**
+   * Presets de tempo musicales.
+   * Cada preset tiene un nombre italiano y su BPM equivalente.
+   */
   const tempoPresets = [
     {name: 'Largo', bpm: 50},
     {name: 'Adagio', bpm: 66},

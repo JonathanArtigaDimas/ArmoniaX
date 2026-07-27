@@ -1,3 +1,28 @@
+/**
+ * TransposerScreen.tsx - Transportador de acordes con calculadora de capo
+ *
+ * Herramienta completa para transportar acordes musicales y encontrar
+ * la posición óptima de capo para facilitar el toque.
+ *
+ * Funcionalidades:
+ * - Teclado matricial para construir secuencias de acordes
+ * - Modificadores: Mayor, Menor (-), 7, 7m, 5, 5m, 6, 6m, 9, 9m
+ * - Transporte por semitonos (+/- con botones)
+ * - Cálculo automático de capo óptimo (0-11 trastes)
+ * - Rating de dificultad por acorde:
+ *   - Verde (Fácil): sin cejilla compleja
+ *   - Naranja (Cejilla): requiere cejilla media
+ *   - Rojo (Difícil): cejilla completa o acorde complejo
+ * - Leyenda de colores para entender la dificultad
+ *
+ * Algoritmo de capo óptimo:
+ * 1. Prueba cada posición de capo (0-11)
+ * 2. Para cada posición, calcula la dificultad de cada acorde
+ * 3. Suma puntos: fácil=3, medio=1, difícil=0
+ * 4. Selecciona la posición con mayor puntuación
+ *
+ * Usado como modal desde HerramientasScreen.
+ */
 import React, {useState} from 'react';
 import {
   View,
@@ -25,14 +50,20 @@ import {
   MEDIO_MENOR,
 } from '../utils/chordTransposer';
 
+/** Las 12 notas de la escala cromática en español */
 const NOTAS = ['Do', 'Do#', 'Re', 'Re#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'];
 
+/** Tipo para los modificadores de acorde */
 type Modificador = {
-  label: string;
-  sufijo: string;
-  esMenor: boolean;
+  label: string;     // Nombre para mostrar (ej: "Mayor", "Menor")
+  sufijo: string;    // Sufijo del acorde (ej: "", "-", "7")
+  esMenor: boolean;  // Si es acorde menor
 };
 
+/**
+ * Modificadores principales (siempre visibles).
+ * Son los 4 tipos más comunes de acordes.
+ */
 const MOD_PRINCIPALES: Modificador[] = [
   {label: 'Mayor', sufijo: '', esMenor: false},
   {label: 'Menor', sufijo: '-', esMenor: true},
@@ -40,6 +71,10 @@ const MOD_PRINCIPALES: Modificador[] = [
   {label: '7m', sufijo: '7', esMenor: true},
 ];
 
+/**
+ * Modificadores extra (expandibles con botón +).
+ * Incluyen acordes menos comunes: quintas, sextas, novenas.
+ */
 const MOD_EXTRA: Modificador[] = [
   {label: '5', sufijo: '5', esMenor: false},
   {label: '5m', sufijo: '5-', esMenor: true},
@@ -49,17 +84,27 @@ const MOD_EXTRA: Modificador[] = [
   {label: '9m', sufijo: '9-', esMenor: true},
 ];
 
+/** Props del transportador */
 interface TransposerScreenProps {
-  onClose: () => void;
+  onClose: () => void; // Callback para cerrar el modal
 }
 
+/** Resultado del cálculo de capo óptimo */
 interface CapoResult {
-  capo: number;
-  acordesFaciles: string[];
-  acordesOriginales: string[];
-  dificultad: number[];
+  capo: number;              // Posición del capo (0-11 trastes)
+  acordesFaciles: string[];  // Acordes resultantes con el capo aplicado
+  acordesOriginales: string[]; // Acordes antes de aplicar capo
+  dificultad: number[];      // Dificultad de cada acorde (0=fácil, 1=medio, 2=difícil)
 }
 
+/**
+ * Calcula la dificultad de tocar un acorde en una posición específica.
+ *
+ * @param indice - Índice cromático de la nota raíz (0-11)
+ * @param esMenor - Si el acorde es menor
+ * @param sufijo - Sufijo del acorde (ej: "7", "5", "6")
+ * @returns 0 = fácil, 1 = medio (cejilla), 2 = difícil
+ */
 function calcularDificultad(indice: number, esMenor: boolean, sufijo: string): number {
   if (sufijo === '7' || sufijo === '-7') {
     return esMenor
@@ -87,6 +132,20 @@ function calcularDificultad(indice: number, esMenor: boolean, sufijo: string): n
   return FACIL_MAYOR.includes(indice) ? 0 : MEDIO_MAYOR.includes(indice) ? 1 : 2;
 }
 
+/**
+ * Encuentra la posición de capo que maximiza acordes fáciles.
+ *
+ * Algoritmo de fuerza bruta optimizada:
+ * 1. Para cada posición de capo (0-11):
+ *    a. Calcula el shape resultante de cada acorde
+ *    b. Evalúa la dificultad usando calcularDificultad()
+ *    c. Suma puntos: fácil=3, medio=1, difícil=0
+ * 2. Selecciona la posición con mayor puntuación
+ * 3. En caso de empate, prefiere la posición más baja
+ *
+ * @param acordesTranspuestos - Acordes ya transportados por semitonos
+ * @returns Mejor posición de capo con acordes resultantes
+ */
 function encontrarMejorCapo(acordesTranspuestos: string[]): CapoResult {
   let mejorCapo = 0;
   let mejorPuntuacion = -1;
@@ -123,6 +182,10 @@ function encontrarMejorCapo(acordesTranspuestos: string[]): CapoResult {
   return {capo: mejorCapo, acordesFaciles: mejorResultado, acordesOriginales: acordesTranspuestos, dificultad: mejorDificultad};
 }
 
+/**
+ * Pantalla del transportador de acordes.
+ * Construye secuencias de acordes, las transporta y calcula capo óptimo.
+ */
 export const TransposerScreen: React.FC<TransposerScreenProps> = ({onClose}) => {
   const [acordesElegidos, setAcordesElegidos] = useState<string[]>([]);
   const [semitones, setSemitones] = useState(0);

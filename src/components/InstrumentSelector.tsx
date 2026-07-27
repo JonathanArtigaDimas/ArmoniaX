@@ -1,3 +1,14 @@
+/**
+ * InstrumentSelector.tsx - Selector horizontal de instrumentos
+ *
+ * Componente presentacional que muestra un scroll horizontal de chips
+ * para seleccionar el instrumento activo (Guitarra o Charango).
+ *
+ * Cada chip muestra el emoji y nombre del instrumento.
+ * El chip seleccionado se resalta con color de acento.
+ *
+ * Usado en: MainScreen.tsx (pantalla del afinador)
+ */
 import React from 'react';
 import {
   View,
@@ -9,12 +20,17 @@ import {
 import {Instrument} from '../constants/instruments';
 import {COLORS} from '../constants/theme';
 
+/** Props del selector de instrumentos */
 interface InstrumentSelectorProps {
-  instruments: Instrument[];
-  selectedId: string;
-  onSelect: (instrument: Instrument) => void;
+  instruments: Instrument[];  // Array de instrumentos disponibles
+  selectedId: string;         // ID del instrumento actualmente seleccionado
+  onSelect: (instrument: Instrument) => void; // Callback al seleccionar
 }
 
+/**
+ * Selector de instrumento con scroll horizontal.
+ * Muestra chips con emoji + nombre para cada instrumento.
+ */
 export const InstrumentSelector: React.FC<InstrumentSelectorProps> = ({
   instruments,
   selectedId,

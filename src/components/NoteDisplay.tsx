@@ -1,24 +1,51 @@
+/**
+ * NoteDisplay.tsx - Display de nota musical del afinador
+ *
+ * Componente que muestra la información principal de la nota detectada:
+ * - Frecuencia en Hz (con color según estado)
+ * - Nombre de la nota (en español o inglés según configuración)
+ * - Estado de afinación ("AFINADO", "TENSAR", "DESTENSAR")
+ *
+ * El color del estado cambia según la desviación de cents:
+ * - Verde brillante: afinado
+ * - Verde: dentro de tolerancia
+ * - Naranja: cerca pero fuera
+ * - Rojo: muy desafinado
+ *
+ * Usado en: MainScreen.tsx (pantalla del afinador)
+ */
 import React from 'react';
 import {View, Text, StyleSheet} from 'react-native';
 import {Note, getNoteName} from '../constants/instruments';
 import {COLORS, FONTS} from '../constants/theme';
 import {getCentsColor} from '../utils/tunerUtils';
 
+/** Props del display de nota */
 interface NoteDisplayProps {
-  note: Note;
-  isTuned?: boolean;
-  detectedHz?: number;
-  cents?: number;
-  tolerance?: number;
-  notationSystem?: 'spanish' | 'english';
+  note: Note;                                          // Nota objetivo actual
+  isTuned?: boolean;                                   // Si está afinada
+  detectedHz?: number;                                 // Frecuencia detectada por micrófono
+  cents?: number;                                      // Desviación en cents
+  tolerance?: number;                                  // Tolerancia en cents (10 normal, 3 profesional)
+  notationSystem?: 'spanish' | 'english';              // Sistema de notación activo
 }
 
+/**
+ * Determina el texto de estado según la desviación de cents.
+ * - cents < 0: "TENSAR" (la cuerda está floja)
+ * - cents > 0: "DESTENSAR" (la cuerda está muy tensa)
+ * - isTuned: "AFINADO" (está dentro de tolerancia)
+ */
 const getTuningStatus = (cents: number, isTuned?: boolean): string => {
   if (isTuned) {return 'afinado';}
   if (cents < 0) {return 'tensar';}
   return 'destensar';
 };
 
+/**
+ * Display principal de nota del afinador.
+ * Muestra frecuencia, nombre de nota y estado de afinación.
+ */
 export const NoteDisplay: React.FC<NoteDisplayProps> = ({
   note,
   isTuned,
