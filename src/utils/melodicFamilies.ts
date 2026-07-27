@@ -2,8 +2,8 @@
  * melodicFamilies.ts - Familias melódicas predefinidas
  *
  * Agrupa cantos por características melódicas similares.
- * Cada familia tiene un offset fijo de transporte que funciona
- * bien para la mayoría de voces en ese estilo.
+ * Cada familia tiene un ajuste RELATIVO sobre la recomendación
+ * automática de la app (calculatedOffset).
  */
 
 export type MelodicFamily = {
@@ -13,8 +13,8 @@ export type MelodicFamily = {
   icon: string;
   description: string;
   examples: string[];
-  /** Offset fijo en semitonos */
-  offset: number;
+  /** Ajuste relativo en semitonos sobre la recomendación automática */
+  adjustment: number;
   tip: string;
 };
 
@@ -34,8 +34,8 @@ export const MELODIC_FAMILIES: MelodicFamily[] = [
       'Surgirá una gran luz',
       'El Señor es mi pastor',
     ],
-    offset: -1,
-    tip: 'Baja -1 semitono para que tu voz no quede forzada en los agudos',
+    adjustment: -4,
+    tip: 'Resta -4 a la recomendación para que tu voz no quede forzada en los agudos',
   },
   {
     id: 'recitativos_graves',
@@ -51,8 +51,8 @@ export const MELODIC_FAMILIES: MelodicFamily[] = [
       'A ti levanto mis ojos',
       'Gritos de júbilo',
     ],
-    offset: +3,
-    tip: 'Sube +3 semitonos para que tu voz suene con más brillo',
+    adjustment: +3,
+    tip: 'Suma +3 a la recomendación para que tu voz suene con más brillo',
   },
   {
     id: 'festivos_salmos',
@@ -67,8 +67,8 @@ export const MELODIC_FAMILIES: MelodicFamily[] = [
       'Te has llevado a mis hermanos',
       'Consolad a mi pueblo',
     ],
-    offset: -1,
-    tip: 'Baja -1 semitono para aliviar el final de frase',
+    adjustment: -1,
+    tip: 'Resta -1 a la recomendación para aliviar el final de frase',
   },
   {
     id: 'flamencos_frigios',
@@ -84,8 +84,8 @@ export const MELODIC_FAMILIES: MelodicFamily[] = [
       'Gritad jubilosos',
       'Una gran señal',
     ],
-    offset: -1,
-    tip: 'Baja -1 semitono para no forzar el timbre',
+    adjustment: -1,
+    tip: 'Resta -1 a la recomendación para no forzar el timbre',
   },
   {
     id: 'neutros_balanceados',
@@ -101,14 +101,7 @@ export const MELODIC_FAMILIES: MelodicFamily[] = [
       'Hacia ti, morada santa',
       'Pentecostés',
     ],
-    offset: 0,
-    tip: 'Tono original, sin cambio necesario',
+    adjustment: 0,
+    tip: 'Mantén la recomendación automática tal cual',
   },
 ];
-
-/**
- * Retorna el offset fijo de una familia.
- */
-export function getFamilyOffset(family: MelodicFamily): number {
-  return family.offset;
-}

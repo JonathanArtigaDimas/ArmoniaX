@@ -58,7 +58,7 @@ import {
 } from '../utils/chordProParser';
 import {transposeChord, parseAcorde, ESCALA} from '../utils/chordTransposer';
 import {loadVocalRange, VocalRangeData} from '../utils/vocalStorage';
-import {loadVocalOffset, saveVocalOffset} from '../utils/vocalOffsetStorage';
+import {loadVocalOffset, saveVocalOffset, removeVocalOffset} from '../utils/vocalOffsetStorage';
 import {MELODIC_FAMILIES} from '../utils/melodicFamilies';
 
 const detectOriginalKey = (text: string): number => {
@@ -902,6 +902,11 @@ const VocalRecomModal: React.FC<{
     });
   }, [cantoNumber]);
 
+  const handleRemoveSavedOffset = async () => {
+    await removeVocalOffset(cantoNumber);
+    setSavedOffset(null);
+  };
+
   if (!chordProText || !vocalRange) {
     return (
       <View style={styles.modalContainer}>
@@ -951,11 +956,6 @@ const VocalRecomModal: React.FC<{
   const userUpper = vocalRange.upperOctave * 12 + vocalRange.upperNote;
   const pref = vocalRange.preferenceOffset || 0;
 
-  // Offset fijo de la familia seleccionada
-  const familyOffset = selectedFamily
-    ? (MELODIC_FAMILIES.find(f => f.id === selectedFamily)?.offset ?? null)
-    : null;
-
   // Si hay offset guardado para este canto, usarlo como base
   // Si no, calcular con el algoritmo
   const calculatedOffset = (() => {
@@ -964,6 +964,15 @@ const VocalRecomModal: React.FC<{
     if (off > 6) off -= 12;
     return off;
   })();
+
+  // Offset de la familia seleccionada
+  // adjustment === 0 significa "tonalidad original" (0 semitonos)
+  const familyOffset = selectedFamily
+    ? (() => {
+        const adj = MELODIC_FAMILIES.find(f => f.id === selectedFamily)?.adjustment ?? 0;
+        return adj === 0 ? 0 : calculatedOffset + adj;
+      })()
+    : null;
 
   // Prioridad: familia seleccionada > offset guardado > cálculo automático
   const baseOffset = familyOffset !== null
@@ -1035,7 +1044,7 @@ const VocalRecomModal: React.FC<{
                     {family.name}
                   </Text>
                   <Text style={styles.vocalFamilyChipOffset}>
-                    {family.offset > 0 ? '+' : ''}{family.offset} sem
+                    {family.adjustment > 0 ? '+' : ''}{family.adjustment} sem
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -1046,8 +1055,11 @@ const VocalRecomModal: React.FC<{
         {loaded && savedOffset !== null && (
           <View style={styles.vocalSavedBadge}>
             <Text style={styles.vocalSavedBadgeText}>
-              Offset guardado para este canto: {savedOffset > 0 ? '+' : ''}{savedOffset} sem
+              Offset guardado: {savedOffset > 0 ? '+' : ''}{savedOffset} sem
             </Text>
+            <TouchableOpacity onPress={handleRemoveSavedOffset}>
+              <Text style={styles.vocalSavedBadgeClose}>✕</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -1147,7 +1159,11 @@ const VocalRecomModal: React.FC<{
 
         <Text style={styles.modalHint}>
           {selectedFamily
-            ? `Familia "${MELODIC_FAMILIES.find(f => f.id === selectedFamily)?.name}" aplicada · Ajusta con +/− si es necesario`
+            ? (() => {
+                const f = MELODIC_FAMILIES.find(fam => fam.id === selectedFamily);
+                const adj = f?.adjustment ?? 0;
+                return `Familia "${f?.name}" aplicada (${adj > 0 ? '+' : ''}${adj} sem sobre recomendación) · Ajusta con +/− si es necesario`;
+              })()
             : loaded && savedOffset !== null
               ? 'Se cargó tu offset guardado para este canto · Ajusta con +/− si es necesario'
               : 'Selecciona una familia o ajusta con +/− para encontrar tu tonalidad ideal'}
@@ -2316,6 +2332,11 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     fontSize: 12,
     fontWeight: '600',
+  },
+  vocalSavedBadgeClose: {
+    color: COLORS.textSecondary,
+    fontSize: 16,
+    paddingLeft: 8,
   },
   vocalFamilyContainer: {
     backgroundColor: COLORS.surface,
