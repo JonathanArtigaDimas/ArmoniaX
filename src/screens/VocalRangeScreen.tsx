@@ -77,10 +77,8 @@ function toMidi(noteIndex: number, octave: number): number {
 /**
  * Calcula la cantidad de octavas entre dos notas.
  */
-function octavesBetween(lowerNote: number, lowerOctave: number, upperNote: number, upperOctave: number): number {
-  const lowerMidi = toMidi(lowerNote, lowerOctave);
-  const upperMidi = toMidi(upperNote, upperOctave);
-  return Math.max(0, Math.floor((upperMidi - lowerMidi) / 12));
+function octavesBetween(_lowerNote: number, lowerOctave: number, _upperNote: number, upperOctave: number): number {
+  return Math.max(0, upperOctave - lowerOctave);
 }
 
 /**
@@ -138,6 +136,7 @@ export const VocalRangeScreen: React.FC<VocalRangeScreenProps> = ({onClose}) => 
   const [lowerOctave, setLowerOctave] = useState(3);
   const [upperNote, setUpperNote] = useState(0);
   const [upperOctave, setUpperOctave] = useState(5);
+  const [preferenceOffset, setPreferenceOffset] = useState(0);
   const [showLowerPicker, setShowLowerPicker] = useState(false);
   const [showUpperPicker, setShowUpperPicker] = useState(false);
 
@@ -148,6 +147,7 @@ export const VocalRangeScreen: React.FC<VocalRangeScreenProps> = ({onClose}) => 
       setLowerOctave(data.lowerOctave);
       setUpperNote(data.upperNote);
       setUpperOctave(data.upperOctave);
+      setPreferenceOffset(data.preferenceOffset);
     });
   }, []);
 
@@ -166,9 +166,10 @@ export const VocalRangeScreen: React.FC<VocalRangeScreenProps> = ({onClose}) => 
       lowerOctave,
       upperNote,
       upperOctave,
+      preferenceOffset,
     });
     Alert.alert('Guardado', 'Tu rango vocal ha sido guardado.', [{text: 'OK'}]);
-  }, [gender, lowerNote, lowerOctave, upperNote, upperOctave]);
+  }, [gender, lowerNote, lowerOctave, upperNote, upperOctave, preferenceOffset]);
 
   const voiceType = classifyVoiceType(gender, lowerNote, lowerOctave, upperNote, upperOctave);
   const octaves = octavesBetween(lowerNote, lowerOctave, upperNote, upperOctave);
@@ -326,6 +327,43 @@ export const VocalRangeScreen: React.FC<VocalRangeScreenProps> = ({onClose}) => 
             </View>
           </View>
         )}
+
+        {/* Ajuste de preferencia */}
+        <Text style={styles.sectionTitle}>Preferencia de tono</Text>
+        <View style={styles.preferenceContainer}>
+          <Text style={styles.preferenceDescription}>
+            Ajusta las recomendaciones vocales. Si sientes que te recomienda tonos muy altos, baja el ajuste.
+          </Text>
+          <View style={styles.preferenceRow}>
+            <TouchableOpacity
+              style={styles.preferenceButton}
+              onPress={() => setPreferenceOffset(prev => Math.max(prev - 1, -8))}>
+              <Text style={styles.preferenceButtonText}>−</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.preferenceValueContainer}
+              onPress={() => setPreferenceOffset(0)}>
+              <Text style={styles.preferenceValue}>
+                {preferenceOffset === 0 ? '0' : `${preferenceOffset > 0 ? '+' : ''}${preferenceOffset}`}
+              </Text>
+              <Text style={styles.preferenceUnit}>semitonos</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.preferenceButton}
+              onPress={() => setPreferenceOffset(prev => Math.min(prev + 1, 8))}>
+              <Text style={styles.preferenceButtonText}>+</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.preferenceLabels}>
+            <Text style={styles.preferenceLabelText}>Más graves</Text>
+            <Text style={styles.preferenceLabelText}>Más agudas</Text>
+          </View>
+          {preferenceOffset !== 0 && (
+            <Text style={styles.preferenceHint}>
+              {preferenceOffset > 0 ? 'Recomendará tonos más altos' : 'Recomendará tonos más bajos'} · Toca el número para resetear
+            </Text>
+          )}
+        </View>
       </ScrollView>
     </View>
   );
@@ -542,5 +580,72 @@ const styles = StyleSheet.create({
   pickerItemTextActive: {
     color: COLORS.background,
     fontWeight: '700',
+  },
+  preferenceContainer: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 24,
+  },
+  preferenceDescription: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  preferenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  preferenceButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  preferenceButtonText: {
+    color: COLORS.text,
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  preferenceValueContainer: {
+    alignItems: 'center',
+    minWidth: 80,
+  },
+  preferenceValue: {
+    color: COLORS.accent,
+    fontSize: 28,
+    fontWeight: '700',
+  },
+  preferenceUnit: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  preferenceHint: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 12,
+    opacity: 0.6,
+  },
+  preferenceLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+  preferenceLabelText: {
+    color: COLORS.textSecondary,
+    fontSize: 10,
+    opacity: 0.5,
   },
 });

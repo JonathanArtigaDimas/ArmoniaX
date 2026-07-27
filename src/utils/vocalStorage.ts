@@ -22,6 +22,7 @@ export interface VocalRangeData {
   lowerOctave: number; // octava de la nota inferior (2-5)
   upperNote: number;   // índice 0-11 en ESCALA
   upperOctave: number; // octava de la nota superior (2-6)
+  preferenceOffset: number; // ajuste personal en semitonos (-5 a +5)
 }
 
 /** Datos por defecto: hombre, Do3 a Do5 */
@@ -31,6 +32,7 @@ const DEFAULT_DATA: VocalRangeData = {
   lowerOctave: 3,
   upperNote: 0,  // DO
   upperOctave: 5,
+  preferenceOffset: 0,
 };
 
 /**
@@ -48,6 +50,7 @@ export async function loadVocalRange(): Promise<VocalRangeData> {
         lowerOctave: data.lowerOctave ?? DEFAULT_DATA.lowerOctave,
         upperNote: data.upperNote ?? DEFAULT_DATA.upperNote,
         upperOctave: data.upperOctave ?? DEFAULT_DATA.upperOctave,
+        preferenceOffset: data.preferenceOffset ?? DEFAULT_DATA.preferenceOffset,
       };
     }
   } catch {}

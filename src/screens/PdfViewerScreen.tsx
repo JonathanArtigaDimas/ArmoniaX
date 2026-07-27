@@ -57,6 +57,9 @@ import {
   isAllEasy,
 } from '../utils/chordProParser';
 import {transposeChord, parseAcorde, ESCALA} from '../utils/chordTransposer';
+import {loadVocalRange, VocalRangeData} from '../utils/vocalStorage';
+import {loadVocalOffset, saveVocalOffset} from '../utils/vocalOffsetStorage';
+import {MELODIC_FAMILIES} from '../utils/melodicFamilies';
 
 const detectOriginalKey = (text: string): number => {
   const chords = extractUniqueChords(text);
@@ -110,6 +113,8 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
   const [manualCapo, setManualCapo] = useState(0);
   const [showCapoDropdown, setShowCapoDropdown] = useState(false);
   const [showTonalidadModal, setShowTonalidadModal] = useState(false);
+  const [showVocalModal, setShowVocalModal] = useState(false);
+  const [vocalRange, setVocalRange] = useState<VocalRangeData | null>(null);
 
   const resolvedPages = pages ?? (page ? [page] : []);
   const hasPdfPages = resolvedPages.length > 0;
@@ -333,7 +338,7 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
             </TouchableOpacity>
           </View>
 
-          {/* Dropdown del menú de opciones */}
+          {/* Dropdown del menú de opciones — diseño limpio y minimalista */}
           {showMenuDropdown && (
             <View style={styles.dropdownContainer}>
               <TouchableOpacity
@@ -350,7 +355,9 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
                   }}>
                   <Text style={styles.dropdownItemIcon}>🎯</Text>
                   <Text style={styles.dropdownItemText}>Recomendaciones</Text>
+                  <Text style={styles.dropdownItemChevron}>›</Text>
                 </TouchableOpacity>
+                <View style={styles.dropdownSeparator} />
                 <TouchableOpacity
                   style={styles.dropdownItem}
                   onPress={() => {
@@ -359,23 +366,9 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
                   }}>
                   <Text style={styles.dropdownItemIcon}>💾</Text>
                   <Text style={styles.dropdownItemText}>Guardados</Text>
+                  <Text style={styles.dropdownItemChevron}>›</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.dropdownItem}
-                  onPress={() => {
-                    setShowMenuDropdown(false);
-                  }}>
-                  <Text style={styles.dropdownItemIcon}>🔀</Text>
-                  <Text style={styles.dropdownItemText}>Transportados</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.dropdownItem}
-                  onPress={() => {
-                    setShowMenuDropdown(false);
-                  }}>
-                  <Text style={styles.dropdownItemIcon}>🎤</Text>
-                  <Text style={styles.dropdownItemText}>Recomendación Vocal</Text>
-                </TouchableOpacity>
+                <View style={styles.dropdownSeparator} />
                 <TouchableOpacity
                   style={styles.dropdownItem}
                   onPress={() => {
@@ -384,6 +377,20 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
                   }}>
                   <Text style={styles.dropdownItemIcon}>🎵</Text>
                   <Text style={styles.dropdownItemText}>Tonalidad</Text>
+                  <Text style={styles.dropdownItemChevron}>›</Text>
+                </TouchableOpacity>
+                <View style={styles.dropdownSeparator} />
+                <TouchableOpacity
+                  style={styles.dropdownItem}
+                  onPress={async () => {
+                    setShowMenuDropdown(false);
+                    const data = await loadVocalRange();
+                    setVocalRange(data);
+                    setShowVocalModal(true);
+                  }}>
+                  <Text style={styles.dropdownItemIcon}>🎤</Text>
+                  <Text style={styles.dropdownItemText}>Recomendación Vocal</Text>
+                  <Text style={styles.dropdownItemChevron}>›</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -846,6 +853,306 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
           )}
         </View>
       </Modal>
+
+      {/* Modal de Recomendación Vocal */}
+      <Modal
+        visible={showVocalModal}
+        animationType="slide"
+        onRequestClose={() => setShowVocalModal(false)}>
+        <VocalRecomModal
+          chordProText={chordProText}
+          vocalRange={vocalRange}
+          cantoNumber={cantoNumber}
+          onClose={() => setShowVocalModal(false)}
+          onApply={(offset) => {
+            setTransposeOffset(offset);
+            setSavedCapoActive(false);
+            setActiveSavedCapo(null);
+            setShowVocalModal(false);
+          }}
+        />
+      </Modal>
+    </View>
+  );
+};
+
+/**
+ * Modal de Recomendación Vocal.
+ * Calcula el transporte óptimo basado en el rango vocal del usuario
+ * y permite ajuste fino ±1 semitono antes de aplicar.
+ * Guarda el offset usado por canto para recordarlo la próxima vez.
+ */
+const VocalRecomModal: React.FC<{
+  chordProText: string | null;
+  vocalRange: VocalRangeData | null;
+  cantoNumber: number;
+  onClose: () => void;
+  onApply: (offset: number) => void;
+}> = ({chordProText, vocalRange, cantoNumber, onClose, onApply}) => {
+  const [adjustment, setAdjustment] = useState(0);
+  const [savedOffset, setSavedOffset] = useState<number | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [selectedFamily, setSelectedFamily] = useState<string | null>(null);
+
+  // Cargar offset guardado para este canto al montar
+  useEffect(() => {
+    loadVocalOffset(cantoNumber).then(offset => {
+      setSavedOffset(offset);
+      setLoaded(true);
+    });
+  }, [cantoNumber]);
+
+  if (!chordProText || !vocalRange) {
+    return (
+      <View style={styles.modalContainer}>
+        <View style={styles.modalHeader}>
+          <TouchableOpacity onPress={onClose} style={styles.modalCloseButton}>
+            <Text style={styles.modalCloseText}>✕</Text>
+          </TouchableOpacity>
+          <Text style={styles.modalTitle}>Recomendación Vocal</Text>
+          <View style={{width: 40}} />
+        </View>
+        <View style={styles.modalEmptyContainer}>
+          <Text style={styles.modalEmptyIcon}>🎤</Text>
+          <Text style={styles.modalEmptyTitle}>
+            {!chordProText ? 'Sin acordes' : 'Configura tu rango vocal'}
+          </Text>
+          <Text style={styles.modalEmptyText}>
+            {!chordProText
+              ? 'No hay acordes disponibles para este canto.'
+              : 'Ve a Herramientas → Rango Vocal para configurar tu rango antes de usar esta función.'}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  const originalKey = detectOriginalKey(chordProText);
+  const originalChords = extractUniqueChords(chordProText);
+  const originalKeyName = ESCALA[originalKey];
+
+  // Análisis melódico: estimar rango de la melodía basado en los acordes
+  // La melodía típicamente sube 2-4 semitonos sobre la tónica y baja 2-3
+  const allChordIndices = originalChords
+    .map(c => parseAcorde(c))
+    .filter((p): p is NonNullable<typeof p> => p !== null)
+    .map(p => p.indice);
+  const maxChordIndex = allChordIndices.length > 0 ? Math.max(...allChordIndices) : originalKey;
+  const minChordIndex = allChordIndices.length > 0 ? Math.min(...allChordIndices) : originalKey;
+  const chordSpan = ((maxChordIndex - minChordIndex) % 12 + 12) % 12;
+
+  // Estimar cuánto sube la melodía sobre la tónica (típicamente 2-4 semitonos más)
+  const estimatedMelodicRise = Math.min(chordSpan + 3, 9); // max 9 semitonos (~m7)
+  // Estimar cuánto baja la melodía bajo la tónica (típicamente 2-3 semitonos)
+  const estimatedMelodicDrop = Math.min(chordSpan > 4 ? 3 : 2, 4);
+
+  // Calcular offset base: 10% del rango vocal + preferencia del usuario
+  const userLower = vocalRange.lowerOctave * 12 + vocalRange.lowerNote;
+  const userUpper = vocalRange.upperOctave * 12 + vocalRange.upperNote;
+  const pref = vocalRange.preferenceOffset || 0;
+
+  // Offset fijo de la familia seleccionada
+  const familyOffset = selectedFamily
+    ? (MELODIC_FAMILIES.find(f => f.id === selectedFamily)?.offset ?? null)
+    : null;
+
+  // Si hay offset guardado para este canto, usarlo como base
+  // Si no, calcular con el algoritmo
+  const calculatedOffset = (() => {
+    const target = Math.round(userLower + (userUpper - userLower) * 0.10) + pref;
+    let off = ((target - originalKey) % 12 + 12) % 12;
+    if (off > 6) off -= 12;
+    return off;
+  })();
+
+  // Prioridad: familia seleccionada > offset guardado > cálculo automático
+  const baseOffset = familyOffset !== null
+    ? familyOffset
+    : (loaded && savedOffset !== null ? savedOffset : calculatedOffset);
+  const finalOffset = baseOffset + adjustment;
+  const recommendedKeyIndex = ((originalKey + finalOffset) % 12 + 12) % 12;
+  const recommendedKeyName = ESCALA[recommendedKeyIndex];
+  const transposedChords = originalChords.map(c => transposeChord(c, finalOffset, true));
+  const rangeText = `${ESCALA[vocalRange.lowerNote]}${vocalRange.lowerOctave} → ${ESCALA[vocalRange.upperNote]}${vocalRange.upperOctave}`;
+  const offsetText = finalOffset === 0
+    ? 'Sin cambio'
+    : `${finalOffset > 0 ? '+' : ''}${finalOffset} semitonos`;
+
+  // Calcular el rango efectivo de la melodía en el canto transportado
+  const effectiveLowestNote = originalKey + finalOffset - estimatedMelodicDrop;
+  const effectiveHighestNote = originalKey + finalOffset + estimatedMelodicRise;
+  const effectiveLowMidi = (vocalRange.lowerOctave) * 12 + effectiveLowestNote;
+  const effectiveHighMidi = (vocalRange.lowerOctave + Math.floor((effectiveHighestNote) / 12)) * 12 + ((effectiveHighestNote % 12 + 12) % 12);
+
+  const handleApply = async () => {
+    await saveVocalOffset(cantoNumber, finalOffset);
+    onApply(finalOffset);
+  };
+
+  return (
+    <View style={styles.modalContainer}>
+      <View style={styles.modalHeader}>
+        <TouchableOpacity onPress={onClose} style={styles.modalCloseButton}>
+          <Text style={styles.modalCloseText}>✕</Text>
+        </TouchableOpacity>
+        <Text style={styles.modalTitle}>Recomendación Vocal</Text>
+        <View style={{width: 40}} />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.modalScrollContent}>
+        {/* Card rango vocal */}
+        <View style={styles.vocalInfoCard}>
+          <Text style={styles.vocalInfoIcon}>🎤</Text>
+          <Text style={styles.vocalInfoLabel}>Tu rango vocal</Text>
+          <Text style={styles.vocalInfoValue}>{rangeText}</Text>
+          <Text style={styles.vocalInfoGender}>
+            {vocalRange.gender === 'hombre' ? '♂ Hombre' : '♀ Mujer'}
+          </Text>
+        </View>
+
+        {/* Selector de Familia Melódica */}
+        <View style={styles.vocalFamilyContainer}>
+          <Text style={styles.vocalFamilyTitle}>🎵 Familia melódica</Text>
+          <Text style={styles.vocalFamilyHint}>
+            Selecciona la familia que mejor describe este canto
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {MELODIC_FAMILIES.map(family => (
+                <TouchableOpacity
+                  key={family.id}
+                  style={[
+                    styles.vocalFamilyChip,
+                    selectedFamily === family.id && styles.vocalFamilyChipActive,
+                  ]}
+                  onPress={() => setSelectedFamily(
+                    selectedFamily === family.id ? null : family.id,
+                  )}>
+                  <Text style={styles.vocalFamilyChipIcon}>{family.icon}</Text>
+                  <Text style={[
+                    styles.vocalFamilyChipName,
+                    selectedFamily === family.id && styles.vocalFamilyChipNameActive,
+                  ]}>
+                    {family.name}
+                  </Text>
+                  <Text style={styles.vocalFamilyChipOffset}>
+                    {family.offset > 0 ? '+' : ''}{family.offset} sem
+                  </Text>
+                </TouchableOpacity>
+              ))}
+          </ScrollView>
+        </View>
+
+        {/* Indicador de offset guardado */}
+        {loaded && savedOffset !== null && (
+          <View style={styles.vocalSavedBadge}>
+            <Text style={styles.vocalSavedBadgeText}>
+              Offset guardado para este canto: {savedOffset > 0 ? '+' : ''}{savedOffset} sem
+            </Text>
+          </View>
+        )}
+
+        {/* Badge de familia seleccionada */}
+        {selectedFamily && (
+          <View style={styles.vocalFamilyBadge}>
+            <Text style={styles.vocalFamilyBadgeText}>
+              {MELODIC_FAMILIES.find(f => f.id === selectedFamily)?.icon}{' '}
+              {MELODIC_FAMILIES.find(f => f.id === selectedFamily)?.name}
+              {' '}— {familyOffset !== null ? (familyOffset > 0 ? '+' : '') + familyOffset : 0} sem
+            </Text>
+            <TouchableOpacity onPress={() => setSelectedFamily(null)}>
+              <Text style={styles.vocalFamilyBadgeClose}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Tonalidades */}
+        <View style={styles.vocalDetailCard}>
+          <View style={styles.vocalDetailRow}>
+            <Text style={styles.vocalDetailLabel}>Tonalidad original</Text>
+            <Text style={styles.vocalDetailValue}>{originalKeyName}</Text>
+          </View>
+          <View style={styles.vocalDetailSeparator} />
+          <View style={styles.vocalDetailRow}>
+            <Text style={styles.vocalDetailLabel}>Tonalidad recomendada</Text>
+            <Text style={[styles.vocalDetailValue, {color: COLORS.accent}]}>{recommendedKeyName}</Text>
+          </View>
+          <View style={styles.vocalDetailSeparator} />
+          <View style={styles.vocalDetailRow}>
+            <Text style={styles.vocalDetailLabel}>Transporte</Text>
+            <Text style={[styles.vocalDetailValue, finalOffset !== 0 && {color: COLORS.accent}]}>
+              {offsetText}
+            </Text>
+          </View>
+        </View>
+
+        {/* Info melódica del canto */}
+        <View style={styles.vocalMelodicCard}>
+          <Text style={styles.vocalMelodicTitle}>Análisis del canto</Text>
+          <View style={styles.vocalMelodicRow}>
+            <Text style={styles.vocalMelodicLabel}>Rango de acordes</Text>
+            <Text style={styles.vocalMelodicValue}>
+              {ESCALA[minChordIndex]} → {ESCALA[maxChordIndex]} ({chordSpan} sem)
+            </Text>
+          </View>
+          <View style={styles.vocalMelodicRow}>
+            <Text style={styles.vocalMelodicLabel}>Melodía estimada</Text>
+            <Text style={styles.vocalMelodicValue}>
+              Baja ~{estimatedMelodicDrop} sem · Sube ~{estimatedMelodicRise} sem
+            </Text>
+          </View>
+          <Text style={styles.vocalMelodicHint}>
+            Sin datos de melodía, se estima por la progresión de acordes
+          </Text>
+        </View>
+
+        {/* Ajuste fino ±1 */}
+        <View style={styles.vocalAdjustContainer}>
+          <TouchableOpacity
+            style={styles.vocalAdjustButton}
+            onPress={() => setAdjustment(prev => Math.max(prev - 1, -6))}
+            accessibilityLabel="Bajar un semitono">
+            <Text style={styles.vocalAdjustButtonText}>−</Text>
+          </TouchableOpacity>
+          <View style={styles.vocalAdjustValueContainer}>
+            <Text style={styles.vocalAdjustValue}>
+              {finalOffset === 0 ? 'Original' : `${finalOffset > 0 ? '+' : ''}${finalOffset}`}
+            </Text>
+            <Text style={styles.vocalAdjustUnit}>semitonos</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.vocalAdjustButton}
+            onPress={() => setAdjustment(prev => Math.min(prev + 1, 6))}
+            accessibilityLabel="Subir un semitono">
+            <Text style={styles.vocalAdjustButtonText}>+</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Acordes resultantes */}
+        <Text style={styles.modalSectionTitle}>Acordes resultantes</Text>
+        <View style={styles.vocalChordsPreview}>
+          {transposedChords.map((chord, i) => (
+            <View key={i} style={styles.vocalChordChip}>
+              <Text style={styles.vocalChordChipText}>{chord}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Botón aplicar */}
+        <TouchableOpacity
+          style={styles.vocalApplyButton}
+          activeOpacity={0.7}
+          onPress={handleApply}>
+          <Text style={styles.vocalApplyButtonText}>Aplicar transporte</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.modalHint}>
+          {selectedFamily
+            ? `Familia "${MELODIC_FAMILIES.find(f => f.id === selectedFamily)?.name}" aplicada · Ajusta con +/− si es necesario`
+            : loaded && savedOffset !== null
+              ? 'Se cargó tu offset guardado para este canto · Ajusta con +/− si es necesario'
+              : 'Selecciona una familia o ajusta con +/− para encontrar tu tonalidad ideal'}
+        </Text>
+      </ScrollView>
     </View>
   );
 };
@@ -1396,41 +1703,171 @@ const styles = StyleSheet.create({
     top: 56,
     right: 16,
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingVertical: 6,
-    minWidth: 200,
+    borderRadius: 16,
+    paddingVertical: 4,
+    minWidth: 220,
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 4},
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
+    shadowOffset: {width: 0, height: 8},
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 12,
   },
   dropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 16,
     gap: 12,
   },
+  dropdownSeparator: {
+    height: 1,
+    backgroundColor: '#F0F0F0',
+    marginHorizontal: 16,
+  },
   dropdownItemIcon: {
-    fontSize: 18,
+    fontSize: 16,
     width: 24,
     textAlign: 'center',
   },
   dropdownItemText: {
-    color: '#000000',
+    color: '#1A1A1A',
     fontSize: 15,
     fontWeight: '500',
     flex: 1,
+  },
+  dropdownItemChevron: {
+    color: '#C0C0C0',
+    fontSize: 20,
+    fontWeight: '300',
   },
   dropdownCheck: {
     color: COLORS.accent,
     fontSize: 16,
     fontWeight: '700',
   },
-  // Estilos del modal de Recomendaciones
+  // ─── Estilos unificados para TODOS los modales ───
+  // Cada modal (Recomendaciones, Guardados, Tonalidad, Vocal)
+  // reutiliza estos tokens para consistencia visual.
+  modalContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+  },
+  modalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCloseText: {
+    color: COLORS.textSecondary,
+    fontSize: 16,
+  },
+  modalTitle: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: '700',
+    flex: 1,
+    textAlign: 'center',
+  },
+  modalScrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 40,
+  },
+  modalSectionTitle: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 12,
+    marginTop: 4,
+  },
+  modalHint: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 20,
+    opacity: 0.5,
+  },
+  modalEmptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+  },
+  modalEmptyIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+    opacity: 0.5,
+  },
+  modalEmptyTitle: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  modalEmptyText: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  // Cards reutilizables para los modales
+  modalCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    padding: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  modalCardIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: COLORS.accentDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  modalCardIcon: {
+    fontSize: 24,
+  },
+  modalCardContent: {
+    flex: 1,
+  },
+  modalCardTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 3,
+  },
+  modalCardSubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+  },
+  modalCardArrow: {
+    color: COLORS.textSecondary,
+    fontSize: 24,
+    fontWeight: '300',
+    marginLeft: 8,
+  },
+  // ─── Legacy aliases → mapean al sistema unificado ───
+  // Se mantienen para que las JSX existentes de Recomendaciones,
+  // Guardados y Tonalidad sigan compilando sin cambiar todo el JSX.
   recomendacionesContainer: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -1440,25 +1877,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingTop: 20,
+    paddingBottom: 16,
   },
   recomendacionesCloseButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: COLORS.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   recomendacionesCloseText: {
     color: COLORS.textSecondary,
-    fontSize: 18,
+    fontSize: 16,
   },
   recomendacionesTitle: {
     color: COLORS.text,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     flex: 1,
     textAlign: 'center',
@@ -1466,53 +1902,53 @@ const styles = StyleSheet.create({
   recomendacionesContent: {
     flex: 1,
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 12,
   },
   recomendacionesSectionTitle: {
     color: COLORS.textSecondary,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 1,
     marginBottom: 12,
   },
   recomendacionesCard: {
     backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 14,
+    padding: 18,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: COLORS.border,
   },
   recomendacionesCardIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
+    width: 48,
+    height: 48,
+    borderRadius: 12,
     backgroundColor: COLORS.accentDark,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: 14,
   },
   recomendacionesCardIcon: {
-    fontSize: 28,
+    fontSize: 24,
   },
   recomendacionesCardContent: {
     flex: 1,
   },
   recomendacionesCardTitle: {
     color: COLORS.text,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   recomendacionesCardSubtitle: {
     color: COLORS.textSecondary,
-    fontSize: 14,
+    fontSize: 13,
   },
   recomendacionesCardArrow: {
     color: COLORS.textSecondary,
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '300',
     marginLeft: 8,
   },
@@ -1520,8 +1956,8 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 12,
     textAlign: 'center',
-    marginTop: 16,
-    opacity: 0.7,
+    marginTop: 20,
+    opacity: 0.5,
   },
   recomendacionesEmptyContainer: {
     flex: 1,
@@ -1532,7 +1968,7 @@ const styles = StyleSheet.create({
   recomendacionesEmptyIcon: {
     fontSize: 48,
     marginBottom: 16,
-    opacity: 0.6,
+    opacity: 0.5,
   },
   recomendacionesEmptyTitle: {
     color: COLORS.text,
@@ -1544,9 +1980,9 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 14,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
   },
-  // Estilos del modal de Guardados
+  // Guardados modal (aliases al estilo unificado)
   guardadosContainer: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -1556,85 +1992,84 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingTop: 20,
+    paddingBottom: 16,
   },
   guardadosCloseButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: COLORS.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   guardadosCloseText: {
     color: COLORS.textSecondary,
-    fontSize: 18,
+    fontSize: 16,
   },
   guardadosTitle: {
     color: COLORS.text,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     flex: 1,
     textAlign: 'center',
   },
   guardadosAddButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: COLORS.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   guardadosAddButtonText: {
     color: COLORS.background,
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
   },
   guardadosContent: {
     flex: 1,
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 12,
   },
   guardadosSectionTitle: {
     color: COLORS.textSecondary,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 1,
     marginBottom: 12,
   },
   guardadosCard: {
     backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 14,
+    padding: 18,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
   guardadosCardIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
+    width: 48,
+    height: 48,
+    borderRadius: 12,
     backgroundColor: COLORS.surfaceLight,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: 14,
   },
   guardadosCardIcon: {
-    fontSize: 28,
+    fontSize: 24,
   },
   guardadosCardContent: {
     flex: 1,
   },
   guardadosCardTitle: {
     color: COLORS.text,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   guardadosCardSubtitle: {
     color: COLORS.textSecondary,
@@ -1642,7 +2077,7 @@ const styles = StyleSheet.create({
   },
   guardadosCardArrow: {
     color: COLORS.textSecondary,
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '300',
     marginLeft: 8,
   },
@@ -1650,8 +2085,8 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 12,
     textAlign: 'center',
-    marginTop: 16,
-    opacity: 0.7,
+    marginTop: 20,
+    opacity: 0.5,
   },
   guardadosEmptyContainer: {
     flex: 1,
@@ -1662,7 +2097,7 @@ const styles = StyleSheet.create({
   guardadosEmptyIcon: {
     fontSize: 48,
     marginBottom: 16,
-    opacity: 0.6,
+    opacity: 0.5,
   },
   guardadosEmptyTitle: {
     color: COLORS.text,
@@ -1674,6 +2109,317 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 14,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
+  },
+  // ─── Estilos específicos del modal Vocal ───
+  vocalInfoCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    padding: 24,
+    alignItems: 'center',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  vocalInfoIcon: {
+    fontSize: 32,
+    marginBottom: 10,
+  },
+  vocalInfoLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  vocalInfoValue: {
+    color: COLORS.accent,
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  vocalInfoGender: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    marginTop: 6,
+    opacity: 0.7,
+  },
+  vocalDetailCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 18,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  vocalDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+  },
+  vocalDetailLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+  },
+  vocalDetailValue: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  vocalDetailDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+  },
+  vocalChordsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 10,
+  },
+  vocalOptionCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  vocalOptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  vocalOptionDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  vocalOptionLabel: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: '700',
+    flex: 1,
+  },
+  vocalOptionKey: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  vocalOptionDesc: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginBottom: 4,
+    opacity: 0.7,
+  },
+  vocalChordChipSmall: {
+    backgroundColor: COLORS.background,
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  vocalChordChipSmallText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  vocalDetailSeparator: {
+    height: 1,
+    backgroundColor: COLORS.border,
+  },
+  vocalAdjustContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 20,
+  },
+  vocalAdjustButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  vocalAdjustButtonText: {
+    color: COLORS.text,
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  vocalAdjustValueContainer: {
+    alignItems: 'center',
+    minWidth: 80,
+  },
+  vocalAdjustValue: {
+    color: COLORS.accent,
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  vocalAdjustUnit: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  vocalChordsPreview: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 20,
+  },
+  vocalChordChip: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  vocalChordChipText: {
+    color: COLORS.accent,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  vocalApplyButton: {
+    backgroundColor: COLORS.accent,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  vocalApplyButtonText: {
+    color: COLORS.background,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  vocalSavedBadge: {
+    backgroundColor: COLORS.accentDark,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    alignItems: 'center',
+  },
+  vocalSavedBadgeText: {
+    color: COLORS.accent,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  vocalFamilyContainer: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+  },
+  vocalFamilyTitle: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  vocalFamilyHint: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginBottom: 10,
+  },
+  vocalFamilyChip: {
+    backgroundColor: COLORS.surfaceLight,
+    borderRadius: 10,
+    padding: 10,
+    marginRight: 8,
+    minWidth: 110,
+    alignItems: 'center',
+  },
+  vocalFamilyChipActive: {
+    backgroundColor: COLORS.surfaceActive,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+  },
+  vocalFamilyChipIcon: {
+    fontSize: 20,
+    marginBottom: 4,
+  },
+  vocalFamilyChipName: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  vocalFamilyChipNameActive: {
+    color: COLORS.accent,
+  },
+  vocalFamilyChipOffset: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  vocalFamilyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.accentDark,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
+  vocalFamilyBadgeText: {
+    color: COLORS.accent,
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+  },
+  vocalFamilyBadgeClose: {
+    color: COLORS.textSecondary,
+    fontSize: 16,
+    paddingLeft: 8,
+  },
+  vocalMelodicCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  vocalMelodicTitle: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  vocalMelodicRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  vocalMelodicLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+  },
+  vocalMelodicValue: {
+    color: COLORS.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  vocalMelodicHint: {
+    color: COLORS.textSecondary,
+    fontSize: 10,
+    opacity: 0.5,
+    marginTop: 8,
+    fontStyle: 'italic',
   },
 });
