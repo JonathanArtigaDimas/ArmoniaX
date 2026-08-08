@@ -20,6 +20,15 @@ const CHORD_IN_BRACKET = /\[([^\]]+)\]/g;
 /** Patrón para metadatos ChordPro: {title: Nombre}, {subtitle: Subtítulo} */
 const METADATA_TAG = /^\{([^:]+):\s*(.+)\}$/;
 
+/** Directivas de formato que no son metadatos */
+const FORMAT_DIRECTIVES = ['b', 'i', 'u', 'g'];
+
+/** Patrón para detectar negrita ChordPro: {b:texto} */
+const BOLD_TAG = /\{b:(.+?)\}/g;
+
+/** Segmento de texto con formato */
+export type TextSegment = {text: string; bold: boolean};
+
 /** Metadatos extraídos de líneas {key: value} */
 export type ChordProLineMetadata = {
   title?: string;    // Título de la canción ({title: Nombre})
@@ -37,8 +46,8 @@ export type ChordProLineMetadata = {
 export type ChordProParsedLine =
   | {type: 'empty'; raw: string}
   | {type: 'metadata'; key: string; value: string; raw: string}
-  | {type: 'chordpro'; lyricLine: string; chordPositions: {chord: string; position: number}[]; raw: string}
-  | {type: 'plain'; text: string; raw: string};
+  | {type: 'chordpro'; lyricLine: string; chordPositions: {chord: string; position: number}[]; segments: TextSegment[]; raw: string}
+  | {type: 'plain'; text: string; segments: TextSegment[]; raw: string};
 
 /**
  * Detecta si el texto contiene acordes en notación española.
@@ -67,6 +76,36 @@ export function isChordPro(text: string): boolean {
     }
   }
   return bracketCount >= 1;
+}
+
+/**
+ * Parsea texto con directivas {b:texto} en segmentos con formato.
+ * Ejemplo: "Hola {b:mundo} adiós" → [
+ *   {text: "Hola ", bold: false},
+ *   {text: "mundo", bold: true},
+ *   {text: " adiós", bold: false}
+ * ]
+ */
+function parseBoldSegments(text: string): TextSegment[] {
+  const segments: TextSegment[] = [];
+  let lastIndex = 0;
+
+  BOLD_TAG.lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = BOLD_TAG.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({text: text.slice(lastIndex, match.index), bold: false});
+    }
+    segments.push({text: match[1], bold: true});
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    segments.push({text: text.slice(lastIndex), bold: false});
+  }
+
+  return segments.length > 0 ? segments : [{text, bold: false}];
 }
 
 /**
@@ -99,17 +138,20 @@ export function parseChordPro(
 
     const metaMatch = trimmed.match(METADATA_TAG);
     if (metaMatch) {
-      return {
-        type: 'metadata' as const,
-        key: metaMatch[1].toLowerCase(),
-        value: metaMatch[2],
-        raw: line,
-      };
+      // Las directivas de formato ({b:...}, {i:...}) no son metadatos
+      if (!FORMAT_DIRECTIVES.includes(metaMatch[1].toLowerCase())) {
+        return {
+          type: 'metadata' as const,
+          key: metaMatch[1].toLowerCase(),
+          value: metaMatch[2],
+          raw: line,
+        };
+      }
     }
 
     CHORD_IN_BRACKET.lastIndex = 0;
     if (!CHORD_IN_BRACKET.test(line)) {
-      return {type: 'plain' as const, text: line, raw: line};
+      return {type: 'plain' as const, text: line, segments: parseBoldSegments(line), raw: line};
     }
 
     CHORD_IN_BRACKET.lastIndex = 0;
@@ -136,7 +178,7 @@ export function parseChordPro(
       lyricLine += line.slice(lastIndex);
     }
 
-    return {type: 'chordpro' as const, lyricLine, chordPositions, raw: line};
+    return {type: 'chordpro' as const, lyricLine, chordPositions, segments: parseBoldSegments(lyricLine), raw: line};
   });
 }
 

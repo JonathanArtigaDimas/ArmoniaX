@@ -23,6 +23,7 @@ const STORAGE_KEYS = {
   PRO_PRECISION: '@armoniax_pro_precision',
   REFERENCE_HZ: '@armoniax_reference_hz',
   NOTATION_SYSTEM: '@armoniax_notation_system',
+  DEVELOPER_MODE: '@armoniax_developer_mode',
 } as const;
 
 /** Tipo del contexto de configuración - todas las propiedades y funciones disponibles */
@@ -33,6 +34,8 @@ interface SettingsContextValue {
   referenceHz: number;
   /** Sistema de notación activo ('spanish' = Do-Re-Mi, 'english' = C-D-E) */
   notationSystem: 'spanish' | 'english';
+  /** Si el modo desarrollador está activo (editor ChordPro) */
+  developerMode: boolean;
   /** Si la configuración está cargándose desde AsyncStorage */
   isLoading: boolean;
   /** Activa/desactiva precisión profesional */
@@ -41,6 +44,8 @@ interface SettingsContextValue {
   setReferenceHz: (value: number) => void;
   /** Cambia el sistema de notación */
   setNotationSystem: (value: 'spanish' | 'english') => void;
+  /** Activa/desactiva el modo desarrollador */
+  setDeveloperMode: (value: boolean) => void;
 }
 
 /** Context de React para la configuración (inicialmente null) */
@@ -54,6 +59,7 @@ export const SettingsProvider: React.FC<{children: React.ReactNode}> = ({childre
   const [proPrecision, setProPrecisionState] = useState(false);
   const [referenceHz, setReferenceHzState] = useState(440);
   const [notationSystem, setNotationSystemState] = useState<'spanish' | 'english'>('spanish');
+  const [developerMode, setDeveloperModeState] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   /**
@@ -65,10 +71,11 @@ export const SettingsProvider: React.FC<{children: React.ReactNode}> = ({childre
   useEffect(() => {
     (async () => {
       try {
-        const [savedPrecision, savedHz, savedNotation] = await Promise.all([
+        const [savedPrecision, savedHz, savedNotation, savedDevMode] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.PRO_PRECISION),
           AsyncStorage.getItem(STORAGE_KEYS.REFERENCE_HZ),
           AsyncStorage.getItem(STORAGE_KEYS.NOTATION_SYSTEM),
+          AsyncStorage.getItem(STORAGE_KEYS.DEVELOPER_MODE),
         ]);
 
         if (savedPrecision !== null) {
@@ -79,6 +86,9 @@ export const SettingsProvider: React.FC<{children: React.ReactNode}> = ({childre
         }
         if (savedNotation !== null) {
           setNotationSystemState(savedNotation as 'spanish' | 'english');
+        }
+        if (savedDevMode !== null) {
+          setDeveloperModeState(savedDevMode === 'true');
         }
       } catch (error) {
         console.warn('Error loading settings:', error);
@@ -130,16 +140,31 @@ export const SettingsProvider: React.FC<{children: React.ReactNode}> = ({childre
     }
   }, []);
 
+  /**
+   * Activa/desactiva el modo desarrollador y lo guarda en AsyncStorage.
+   * Permite acceder al editor ChordPro de cada canto.
+   */
+  const setDeveloperMode = useCallback(async (value: boolean) => {
+    setDeveloperModeState(value);
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.DEVELOPER_MODE, value.toString());
+    } catch (error) {
+      console.warn('Error saving developerMode:', error);
+    }
+  }, []);
+
   return (
     <SettingsContext.Provider
       value={{
         proPrecision,
         referenceHz,
         notationSystem,
+        developerMode,
         isLoading,
         setProPrecision,
         setReferenceHz,
         setNotationSystem,
+        setDeveloperMode,
       }}>
       {children}
     </SettingsContext.Provider>

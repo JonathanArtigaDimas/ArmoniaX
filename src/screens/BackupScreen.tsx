@@ -109,7 +109,8 @@ export const BackupScreen: React.FC<BackupScreenProps> = ({onClose}) => {
         <View style={styles.infoBox}>
           <Text style={styles.infoText}>
             La copia de seguridad incluye:{'\n\n'}• Cantos y carpetas{'\n'}•
-            Notas por canto{'\n'}• Configuración de la app
+            Notas por canto{'\n'}• ChordPro modificados{'\n'}• Rango vocal y offsets{'\n'}•
+            Datos de melodía{'\n'}• Configuración de la app
           </Text>
         </View>
 

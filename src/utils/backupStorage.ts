@@ -23,6 +23,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import RNFS from 'react-native-fs';
 import Share from 'react-native-share';
 import {pick, keepLocalCopy, types} from '@react-native-documents/picker';
+import {loadAllExtractedChordPros} from './chordProExtractor';
 
 /**
  * Lista de claves de AsyncStorage que se incluyen en el backup.
@@ -36,8 +37,12 @@ const BACKUP_KEYS = [
   '@armoniax_pro_precision',
   '@armoniax_reference_hz',
   '@armoniax_notation_system',
+  '@armoniax_developer_mode',
   'songs_v2_migrated',
   'saved_capo_suggestions',
+  'vocal_range',
+  'vocal_offsets_per_song',
+  'melody_data_overrides',
 ];
 
 /** Estructura del archivo de backup JSON */
@@ -142,6 +147,9 @@ export async function importBackup(): Promise<{
         await AsyncStorage.removeItem(key);
       }
     }
+
+    // Recargar caché de ChordPro en memoria
+    await loadAllExtractedChordPros();
 
     return {success: true, message: 'Copia restaurada exitosamente'};
   } catch (error: any) {

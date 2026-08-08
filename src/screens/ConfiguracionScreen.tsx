@@ -18,7 +18,7 @@
  * con FlatList para selección eficiente.
  */
 import React, {useState} from 'react';
-import {View, Text, ScrollView, Switch, TouchableOpacity, Modal, FlatList, StyleSheet} from 'react-native';
+import {View, Text, ScrollView, Switch, TouchableOpacity, Modal, FlatList, StyleSheet, TextInput} from 'react-native';
 import {COLORS} from '../constants/theme';
 import {BackupScreen} from './BackupScreen';
 import {useSettings} from '../contexts/SettingsContext';
@@ -44,10 +44,13 @@ export const ConfiguracionScreen: React.FC = () => {
     setReferenceHz,
     notationSystem,
     setNotationSystem,
+    developerMode,
+    setDeveloperMode,
   } = useSettings();
   const [showHzModal, setShowHzModal] = useState(false);
   const [showNotationModal, setShowNotationModal] = useState(false);
   const [showBackup, setShowBackup] = useState(false);
+  const [devCode, setDevCode] = useState('');
 
   const handleSelectHz = (hz: number) => {
     setReferenceHz(hz);
@@ -60,6 +63,13 @@ export const ConfiguracionScreen: React.FC = () => {
   };
 
   const currentNotationLabel = NOTATION_OPTIONS.find(o => o.value === notationSystem)?.label || 'Español';
+
+  const handleDevCode = () => {
+    if (devCode.trim().toUpperCase() === 'AX2026') {
+      setDeveloperMode(true);
+      setDevCode('');
+    }
+  };
 
   return (
     <ScrollView
@@ -115,6 +125,38 @@ export const ConfiguracionScreen: React.FC = () => {
             <Text style={styles.rowLabel}>Copia de seguridad</Text>
             <Text style={styles.rowValue}>›</Text>
           </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Para Desarrollador</Text>
+        <View style={styles.sectionContent}>
+          {developerMode ? (
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Modo Desarrollador</Text>
+              <Switch
+                value={true}
+                onValueChange={setDeveloperMode}
+                trackColor={{false: COLORS.surface, true: COLORS.surfaceActive}}
+                thumbColor={COLORS.accent}
+                accessibilityLabel="Modo Desarrollador"
+              />
+            </View>
+          ) : (
+            <View style={styles.row}>
+              <TextInput
+                style={styles.devCodeInput}
+                placeholder="Ingresa código"
+                placeholderTextColor={COLORS.textSecondary}
+                value={devCode}
+                onChangeText={setDevCode}
+                autoCapitalize="characters"
+              />
+              <TouchableOpacity onPress={handleDevCode}>
+                <Text style={styles.rowValue}>Activar</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
 
@@ -302,5 +344,15 @@ const styles = StyleSheet.create({
   },
   hzItemTextSelected: {
     color: COLORS.accent,
+  },
+  devCodeInput: {
+    flex: 1,
+    color: COLORS.text,
+    fontSize: 16,
+    backgroundColor: COLORS.surfaceLight,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 12,
   },
 });

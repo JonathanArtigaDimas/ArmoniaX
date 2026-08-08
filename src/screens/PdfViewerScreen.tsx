@@ -60,6 +60,11 @@ import {transposeChord, parseAcorde, ESCALA} from '../utils/chordTransposer';
 import {loadVocalRange, VocalRangeData} from '../utils/vocalStorage';
 import {loadVocalOffset, saveVocalOffset, removeVocalOffset} from '../utils/vocalOffsetStorage';
 import {MELODIC_FAMILIES} from '../utils/melodicFamilies';
+import {saveExtractedChordPro} from '../utils/chordProExtractor';
+import {useSettings} from '../contexts/SettingsContext';
+import {lookupMelodyData, computeRecommendedOffset, analyzeVocalFit} from '../utils/melodyAnalyzer';
+import {SongMelodyData, VocalVerdict} from '../utils/melodyTypes';
+import MelodyEditorModal from '../components/MelodyEditorModal';
 
 const detectOriginalKey = (text: string): number => {
   const chords = extractUniqueChords(text);
@@ -115,6 +120,11 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
   const [showTonalidadModal, setShowTonalidadModal] = useState(false);
   const [showVocalModal, setShowVocalModal] = useState(false);
   const [vocalRange, setVocalRange] = useState<VocalRangeData | null>(null);
+
+  const [showChordProEditor, setShowChordProEditor] = useState(false);
+  const [chordProEditText, setChordProEditText] = useState('');
+
+  const {developerMode} = useSettings();
 
   const resolvedPages = pages ?? (page ? [page] : []);
   const hasPdfPages = resolvedPages.length > 0;
@@ -185,6 +195,12 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
     setNotePreview(noteText);
     setShowNote(false);
   }, [cantoNumber, noteText]);
+
+  const handleSaveChordPro = useCallback(async () => {
+    await saveExtractedChordPro(songName, chordProEditText);
+    setChordProText(chordProEditText);
+    setShowChordProEditor(false);
+  }, [songName, chordProEditText]);
 
   const handleSaveCapoSuggestion = useCallback(async () => {
     if (!newSuggestionName.trim()) {
@@ -392,6 +408,22 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
                   <Text style={styles.dropdownItemText}>Recomendación Vocal</Text>
                   <Text style={styles.dropdownItemChevron}>›</Text>
                 </TouchableOpacity>
+                {developerMode && (
+                  <>
+                    <View style={styles.dropdownSeparator} />
+                    <TouchableOpacity
+                      style={styles.dropdownItem}
+                      onPress={() => {
+                        setShowMenuDropdown(false);
+                        setChordProEditText(chordProText || '');
+                        setShowChordProEditor(true);
+                      }}>
+                      <Text style={styles.dropdownItemIcon}>📝</Text>
+                      <Text style={styles.dropdownItemText}>ChordPro</Text>
+                      <Text style={styles.dropdownItemChevron}>›</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
               </View>
             </View>
           )}
@@ -863,6 +895,7 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
           chordProText={chordProText}
           vocalRange={vocalRange}
           cantoNumber={cantoNumber}
+          cantoName={songName}
           onClose={() => setShowVocalModal(false)}
           onApply={(offset) => {
             setTransposeOffset(offset);
@@ -872,6 +905,35 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
           }}
         />
       </Modal>
+
+      {/* Modal Editor ChordPro (solo en modo desarrollador) */}
+      {developerMode && (
+        <Modal
+          visible={showChordProEditor}
+          animationType="slide"
+          onRequestClose={() => setShowChordProEditor(false)}>
+          <View style={styles.editorContainer}>
+            <View style={styles.editorHeader}>
+              <TouchableOpacity onPress={() => setShowChordProEditor(false)}>
+                <Text style={styles.editorClose}>Cancelar</Text>
+              </TouchableOpacity>
+              <Text style={styles.editorTitle}>Editar ChordPro</Text>
+              <TouchableOpacity onPress={handleSaveChordPro}>
+                <Text style={styles.editorSave}>Guardar</Text>
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              multiline
+              value={chordProEditText}
+              onChangeText={setChordProEditText}
+              style={styles.editorInput}
+              textAlignVertical="top"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+        </Modal>
+      )}
     </View>
   );
 };
@@ -886,13 +948,17 @@ const VocalRecomModal: React.FC<{
   chordProText: string | null;
   vocalRange: VocalRangeData | null;
   cantoNumber: number;
+  cantoName: string;
   onClose: () => void;
   onApply: (offset: number) => void;
-}> = ({chordProText, vocalRange, cantoNumber, onClose, onApply}) => {
+}> = ({chordProText, vocalRange, cantoNumber, cantoName, onClose, onApply}) => {
   const [adjustment, setAdjustment] = useState(0);
   const [savedOffset, setSavedOffset] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [selectedFamily, setSelectedFamily] = useState<string | null>(null);
+  const [melodyData, setMelodyData] = useState<SongMelodyData | null>(null);
+  const [melodyLoaded, setMelodyLoaded] = useState(false);
+  const [showMelodyEditor, setShowMelodyEditor] = useState(false);
 
   // Cargar offset guardado para este canto al montar
   useEffect(() => {
@@ -901,6 +967,15 @@ const VocalRecomModal: React.FC<{
       setLoaded(true);
     });
   }, [cantoNumber]);
+
+  // Cargar datos de melodía para este canto
+  useEffect(() => {
+    setMelodyLoaded(false);
+    lookupMelodyData(cantoName).then(data => {
+      setMelodyData(data);
+      setMelodyLoaded(true);
+    });
+  }, [cantoName]);
 
   const handleRemoveSavedOffset = async () => {
     await removeVocalOffset(cantoNumber);
@@ -936,8 +1011,8 @@ const VocalRecomModal: React.FC<{
   const originalChords = extractUniqueChords(chordProText);
   const originalKeyName = ESCALA[originalKey];
 
-  // Análisis melódico: estimar rango de la melodía basado en los acordes
-  // La melodía típicamente sube 2-4 semitonos sobre la tónica y baja 2-3
+  // Estimación melódica desde los acordes (solo para el veredicto de respaldo
+  // cuando no hay datos de melodía definidos para este canto)
   const allChordIndices = originalChords
     .map(c => parseAcorde(c))
     .filter((p): p is NonNullable<typeof p> => p !== null)
@@ -945,10 +1020,7 @@ const VocalRecomModal: React.FC<{
   const maxChordIndex = allChordIndices.length > 0 ? Math.max(...allChordIndices) : originalKey;
   const minChordIndex = allChordIndices.length > 0 ? Math.min(...allChordIndices) : originalKey;
   const chordSpan = ((maxChordIndex - minChordIndex) % 12 + 12) % 12;
-
-  // Estimar cuánto sube la melodía sobre la tónica (típicamente 2-4 semitonos más)
-  const estimatedMelodicRise = Math.min(chordSpan + 3, 9); // max 9 semitonos (~m7)
-  // Estimar cuánto baja la melodía bajo la tónica (típicamente 2-3 semitonos)
+  const estimatedMelodicRise = Math.min(chordSpan + 3, 9);
   const estimatedMelodicDrop = Math.min(chordSpan > 4 ? 3 : 2, 4);
 
   // Calcular offset base: 10% del rango vocal + preferencia del usuario
@@ -956,14 +1028,21 @@ const VocalRecomModal: React.FC<{
   const userUpper = vocalRange.upperOctave * 12 + vocalRange.upperNote;
   const pref = vocalRange.preferenceOffset || 0;
 
-  // Si hay offset guardado para este canto, usarlo como base
-  // Si no, calcular con el algoritmo
-  const calculatedOffset = (() => {
+  // Si hay datos de melodía, usarlos para calcular el offset óptimo
+  // (coloca el rango melódico dentro del rango vocal del usuario).
+  // Si no, usar la heurística basada en los acordes.
+  const heuristicOffset = (() => {
     const target = Math.round(userLower + (userUpper - userLower) * 0.10) + pref;
     let off = ((target - originalKey) % 12 + 12) % 12;
     if (off > 6) off -= 12;
     return off;
   })();
+
+  const melodyOffset = melodyLoaded && melodyData
+    ? computeRecommendedOffset(melodyData, vocalRange)
+    : heuristicOffset;
+
+  const calculatedOffset = melodyOffset;
 
   // Offset de la familia seleccionada
   // adjustment === 0 significa "tonalidad original" (0 semitonos)
@@ -987,11 +1066,21 @@ const VocalRecomModal: React.FC<{
     ? 'Sin cambio'
     : `${finalOffset > 0 ? '+' : ''}${finalOffset} semitonos`;
 
-  // Calcular el rango efectivo de la melodía en el canto transportado
-  const effectiveLowestNote = originalKey + finalOffset - estimatedMelodicDrop;
-  const effectiveHighestNote = originalKey + finalOffset + estimatedMelodicRise;
-  const effectiveLowMidi = (vocalRange.lowerOctave) * 12 + effectiveLowestNote;
-  const effectiveHighMidi = (vocalRange.lowerOctave + Math.floor((effectiveHighestNote) / 12)) * 12 + ((effectiveHighestNote % 12 + 12) % 12);
+  // Veredicto vocal: usa la melodía real si está disponible,
+  // o el rango estimado desde los acordes como respaldo.
+  const fallbackMelody: SongMelodyData = (() => {
+    const baseOctave = vocalRange.lowerOctave;
+    const tonicAbs = baseOctave * 12 + originalKey;
+    return {
+      originalKey,
+      low: tonicAbs - estimatedMelodicDrop,
+      high: tonicAbs + estimatedMelodicRise,
+    };
+  })();
+
+  const verdict: VocalVerdict | null = melodyLoaded
+    ? analyzeVocalFit(melodyData ?? fallbackMelody, finalOffset, vocalRange)
+    : null;
 
   const handleApply = async () => {
     await saveVocalOffset(cantoNumber, finalOffset);
@@ -1018,6 +1107,51 @@ const VocalRecomModal: React.FC<{
             {vocalRange.gender === 'hombre' ? '♂ Hombre' : '♀ Mujer'}
           </Text>
         </View>
+
+        {/* Veredicto vocal */}
+        {verdict && (
+          <View
+            style={[
+              styles.vocalVerdictCard,
+              verdict.status === 'optimal' && styles.vocalVerdictCardOptimal,
+              verdict.status === 'aceptable' && styles.vocalVerdictCardAceptable,
+              verdict.status === 'dificil' && styles.vocalVerdictCardDificil,
+              verdict.status === 'fuera' && styles.vocalVerdictCardFuera,
+            ]}>
+            <View style={styles.vocalVerdictHeader}>
+              <Text style={styles.vocalVerdictLabel}>
+                Veredicto vocal {melodyData ? '' : '(estimado)'}
+              </Text>
+              <Text style={styles.vocalVerdictScore}>{verdict.score}%</Text>
+            </View>
+            <Text style={styles.vocalVerdictStatus}>
+              {verdict.status === 'optimal'
+                ? '✅ Óptimo'
+                : verdict.status === 'aceptable'
+                  ? '🟡 Aceptable'
+                  : verdict.status === 'dificil'
+                    ? '🟠 Difícil'
+                    : '🔴 Fuera de rango'}
+            </Text>
+            <Text style={styles.vocalVerdictReason}>{verdict.reason}</Text>
+          </View>
+        )}
+
+        {/* Botón editor de melodía */}
+        <TouchableOpacity
+          style={styles.vocalMelodyButton}
+          activeOpacity={0.7}
+          onPress={() => setShowMelodyEditor(true)}>
+          <Text style={styles.vocalMelodyButtonIcon}>✎</Text>
+          <View style={styles.vocalMelodyButtonTextContainer}>
+            <Text style={styles.vocalMelodyButtonTitle}>Datos de melodía</Text>
+            <Text style={styles.vocalMelodyButtonSubtitle}>
+              {melodyData
+                ? `${ESCALA[melodyData.low % 12]}${Math.floor(melodyData.low / 12)} → ${ESCALA[melodyData.high % 12]}${Math.floor(melodyData.high / 12)}`
+                : 'Sin datos — añade el rango melódico para un veredicto más preciso'}
+            </Text>
+          </View>
+        </TouchableOpacity>
 
         {/* Selector de Familia Melódica */}
         <View style={styles.vocalFamilyContainer}>
@@ -1097,26 +1231,6 @@ const VocalRecomModal: React.FC<{
           </View>
         </View>
 
-        {/* Info melódica del canto */}
-        <View style={styles.vocalMelodicCard}>
-          <Text style={styles.vocalMelodicTitle}>Análisis del canto</Text>
-          <View style={styles.vocalMelodicRow}>
-            <Text style={styles.vocalMelodicLabel}>Rango de acordes</Text>
-            <Text style={styles.vocalMelodicValue}>
-              {ESCALA[minChordIndex]} → {ESCALA[maxChordIndex]} ({chordSpan} sem)
-            </Text>
-          </View>
-          <View style={styles.vocalMelodicRow}>
-            <Text style={styles.vocalMelodicLabel}>Melodía estimada</Text>
-            <Text style={styles.vocalMelodicValue}>
-              Baja ~{estimatedMelodicDrop} sem · Sube ~{estimatedMelodicRise} sem
-            </Text>
-          </View>
-          <Text style={styles.vocalMelodicHint}>
-            Sin datos de melodía, se estima por la progresión de acordes
-          </Text>
-        </View>
-
         {/* Ajuste fino ±1 */}
         <View style={styles.vocalAdjustContainer}>
           <TouchableOpacity
@@ -1169,6 +1283,18 @@ const VocalRecomModal: React.FC<{
               : 'Selecciona una familia o ajusta con +/− para encontrar tu tonalidad ideal'}
         </Text>
       </ScrollView>
+
+      <MelodyEditorModal
+        visible={showMelodyEditor}
+        cantoName={cantoName}
+        originalKey={originalKey}
+        initial={melodyData}
+        onClose={() => setShowMelodyEditor(false)}
+        onSaved={data => {
+          setMelodyData(data);
+          setShowMelodyEditor(false);
+        }}
+      />
     </View>
   );
 };
@@ -1191,7 +1317,13 @@ const ChordProLineView: React.FC<{line: ChordProParsedLine}> = ({line}) => {
 
   if (line.type === 'plain') {
     return (
-      <Text style={styles.chordProPlainText}>{line.text}</Text>
+      <Text style={styles.chordProPlainText}>
+        {line.segments.map((seg, i) => (
+          <Text key={i} style={seg.bold ? {fontWeight: '700'} : undefined}>
+            {seg.text}
+          </Text>
+        ))}
+      </Text>
     );
   }
 
@@ -1208,7 +1340,11 @@ const ChordProLineView: React.FC<{line: ChordProParsedLine}> = ({line}) => {
       <Text style={styles.chordProBoth}>
         <Text style={styles.chordProChord}>{chordDisplay}</Text>
         {'\n'}
-        <Text style={styles.chordProLyric}>{line.lyricLine}</Text>
+        {line.segments.map((seg, i) => (
+          <Text key={i} style={seg.bold ? {fontWeight: '700'} : undefined}>
+            {seg.text}
+          </Text>
+        ))}
       </Text>
     );
   }
@@ -2160,6 +2296,85 @@ const styles = StyleSheet.create({
     marginTop: 6,
     opacity: 0.7,
   },
+  vocalVerdictCard: {
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+  },
+  vocalVerdictCardOptimal: {
+    backgroundColor: COLORS.accentDark,
+    borderColor: COLORS.accent,
+  },
+  vocalVerdictCardAceptable: {
+    backgroundColor: COLORS.warningDark,
+    borderColor: COLORS.warning,
+  },
+  vocalVerdictCardDificil: {
+    backgroundColor: COLORS.warningDark,
+    borderColor: COLORS.warning,
+  },
+  vocalVerdictCardFuera: {
+    backgroundColor: COLORS.errorDark,
+    borderColor: COLORS.error,
+  },
+  vocalVerdictHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  vocalVerdictLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  vocalVerdictScore: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  vocalVerdictStatus: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  vocalVerdictReason: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  vocalMelodyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  vocalMelodyButtonIcon: {
+    fontSize: 22,
+    color: COLORS.accent,
+    marginRight: 12,
+  },
+  vocalMelodyButtonTextContainer: {
+    flex: 1,
+  },
+  vocalMelodyButtonTitle: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  vocalMelodyButtonSubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+  },
   vocalDetailCard: {
     backgroundColor: COLORS.surface,
     borderRadius: 14,
@@ -2405,42 +2620,38 @@ const styles = StyleSheet.create({
     fontSize: 16,
     paddingLeft: 8,
   },
-  vocalMelodicCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+  editorContainer: {
+    flex: 1,
+    backgroundColor: COLORS.background,
   },
-  vocalMelodicTitle: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 10,
-  },
-  vocalMelodicRow: {
+  editorHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 6,
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
-  vocalMelodicLabel: {
+  editorClose: {
     color: COLORS.textSecondary,
-    fontSize: 13,
+    fontSize: 16,
   },
-  vocalMelodicValue: {
+  editorTitle: {
     color: COLORS.text,
-    fontSize: 13,
+    fontSize: 18,
     fontWeight: '600',
   },
-  vocalMelodicHint: {
-    color: COLORS.textSecondary,
-    fontSize: 10,
-    opacity: 0.5,
-    marginTop: 8,
-    fontStyle: 'italic',
+  editorSave: {
+    color: COLORS.accent,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  editorInput: {
+    flex: 1,
+    color: COLORS.text,
+    fontSize: 14,
+    fontFamily: 'monospace',
+    padding: 16,
+    backgroundColor: COLORS.surface,
   },
 });

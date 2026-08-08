@@ -34,7 +34,7 @@ function getChordProData(): Record<string, string> {
 
 /**
  * Busca el ChordPro de una canción por nombre.
- * Prioridad: cancionero.js > extractedCache > null
+ * Prioridad: extractedCache (ediciones del usuario) > cancionero.js
  *
  * @param songName - Nombre de la canción (se normaliza automáticamente)
  * @returns Texto en formato ChordPro o null si no se encuentra
@@ -42,15 +42,15 @@ function getChordProData(): Record<string, string> {
 export function lookupChordPro(songName: string): string | null {
   const key = normalize(songName);
 
+  // Buscar primero en caché de extracción (incluye ediciones del usuario)
+  if (extractedCache[key]) {
+    return extractedCache[key];
+  }
+
   // Buscar en el cancionero precompilado
   const data = getChordProData();
   if (data[key]) {
     return data[key];
-  }
-
-  // Buscar en caché de extracción desde PDF
-  if (extractedCache[key]) {
-    return extractedCache[key];
   }
 
   return null;
