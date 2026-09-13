@@ -21,10 +21,10 @@ const CHORD_IN_BRACKET = /\[([^\]]+)\]/g;
 const METADATA_TAG = /^\{([^:]+):\s*(.+)\}$/;
 
 /** Directivas de formato que no son metadatos */
-const FORMAT_DIRECTIVES = ['b', 'i', 'u', 'g'];
+const FORMAT_DIRECTIVES = ['b', 'i', 'u', 'g', 'c'];
 
 /** Patrón para detectar negrita ChordPro: {b:texto} */
-const BOLD_TAG = /\{b:(.+?)\}/g;
+const BOLD_TAG = /\{[bc]:(.+?)\}/g;
 
 /** Segmento de texto con formato */
 export type TextSegment = {text: string; bold: boolean};
