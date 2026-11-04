@@ -22,7 +22,7 @@
  *
  * Usado como modal desde SongsListScreen y FolderScreen.
  */
-import React, {useEffect, useRef, useState, useCallback} from 'react';
+import React, {useEffect, useMemo, useRef, useState, useCallback} from 'react';
 import {
   View,
   Text,
@@ -55,8 +55,9 @@ import {
   extractUniqueChords,
   suggestCapo,
   isAllEasy,
+  detectKeyFifths,
 } from '../utils/chordProParser';
-import {transposeChord, parseAcorde, ESCALA} from '../utils/chordTransposer';
+import {transposeChord, parseAcorde, ESCALA, getKeyName, getKeyLabel, transposeKeyFifths} from '../utils/chordTransposer';
 import {loadVocalRange, VocalRangeData} from '../utils/vocalStorage';
 import {loadVocalOffset, saveVocalOffset, removeVocalOffset} from '../utils/vocalOffsetStorage';
 import {MELODIC_FAMILIES} from '../utils/melodicFamilies';
@@ -126,7 +127,10 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
 
   const {developerMode} = useSettings();
 
-  const resolvedPages = pages ?? (page ? [page] : []);
+  const resolvedPages = useMemo(
+    () => pages ?? (page ? [page] : []),
+    [pages, page],
+  );
   const hasPdfPages = resolvedPages.length > 0;
   const sortedPages = [...resolvedPages].sort((a, b) => a - b);
   const pageInfo =
@@ -141,6 +145,17 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
       setNotePreview(text);
     });
   }, [cantoNumber]);
+
+  const handleShowChords = useCallback(async () => {
+    setShowChords(true);
+    setTransposeOffset(0);
+    setSavedCapoActive(false);
+    setActiveSavedCapo(null);
+    const text = lookupChordPro(songName);
+    setChordProText(text);
+    const saved = await loadCapoSuggestions(songName);
+    setSavedSuggestions(saved);
+  }, [songName]);
 
   useEffect(() => {
     if (!hasPdfPages) {
@@ -171,18 +186,7 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [resolvedPages, hasPdfPages]);
-
-  const handleShowChords = useCallback(async () => {
-    setShowChords(true);
-    setTransposeOffset(0);
-    setSavedCapoActive(false);
-    setActiveSavedCapo(null);
-    const text = lookupChordPro(songName);
-    setChordProText(text);
-    const saved = await loadCapoSuggestions(songName);
-    setSavedSuggestions(saved);
-  }, [songName]);
+  }, [resolvedPages, hasPdfPages, handleShowChords]);
 
   const handleOpenNote = useCallback(async () => {
     const text = await loadNote(cantoNumber);
@@ -429,11 +433,6 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
           )}
 
           {chordProText && (() => {
-            const originalChords = extractUniqueChords(chordProText);
-            const currentChords = transposeOffset === 0
-              ? originalChords
-              : originalChords.map(c => transposeChord(c, transposeOffset, true));
-            const capoSug = isAllEasy(currentChords) ? null : suggestCapo(currentChords);
             const displayCapo = savedCapoActive && activeSavedCapo != null && activeSavedCapo > 0
               ? activeSavedCapo
               : null;
@@ -665,9 +664,11 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
 
           {chordProText ? (() => {
             const originalChords = extractUniqueChords(chordProText);
+            const originalFifths = detectKeyFifths(chordProText);
+            const targetFifths = transposeKeyFifths(originalFifths, transposeOffset);
             const currentChords = transposeOffset === 0
               ? originalChords
-              : originalChords.map(c => transposeChord(c, transposeOffset, true));
+              : originalChords.map(c => transposeChord(c, transposeOffset, true, {keyFifths: targetFifths}));
 
             if (isAllEasy(currentChords)) {
               return (
@@ -681,7 +682,7 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
               );
             }
 
-            const capoSuggestion = suggestCapo(currentChords);
+            const capoSuggestion = suggestCapo(currentChords, targetFifths);
             if (!capoSuggestion) {
               return (
                 <View style={styles.recomendacionesEmptyContainer}>
@@ -823,16 +824,22 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
 
           {chordProText ? (() => {
             const originalKey = detectOriginalKey(chordProText);
+            const originalFifths = detectKeyFifths(chordProText);
             const currentKey = ((originalKey + transposeOffset) % 12 + 12) % 12;
-            
+            const currentFifths = transposeKeyFifths(originalFifths, transposeOffset);
+
             return (
               <View style={styles.recomendacionesContent}>
                 <Text style={styles.recomendacionesSectionTitle}>
-                  Tonalidad original: {ESCALA[originalKey]}
+                  Tonalidad original: {getKeyName(originalKey, originalFifths < 0)}
                 </Text>
-                
+                <Text style={styles.recomendacionesHint}>
+                  Actual: {getKeyName(currentKey, currentFifths < 0)}
+                </Text>
+
                 <ScrollView style={{ marginTop: 10 }}>
-                  {ESCALA.map((nota, num) => {
+                  {ESCALA.map((_nota, num) => {
+                    const nota = getKeyLabel(num);
                     const isOriginal = num === originalKey;
                     const isCurrent = num === currentKey;
                     
@@ -852,7 +859,7 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
                           setActiveSavedCapo(null);
                           setShowTonalidadModal(false);
                         }}>
-                        <View style={[styles.guardadosCardIconContainer, { width: 40, backgroundColor: 'transparent' }]}>
+                        <View style={[styles.guardadosCardIconContainer, { width: 72, backgroundColor: 'transparent' }]}>
                           <Text style={[styles.guardadosCardTitle, isCurrent && { color: COLORS.accent }]}>{nota}</Text>
                         </View>
                         <View style={styles.guardadosCardContent}>
@@ -1009,7 +1016,8 @@ const VocalRecomModal: React.FC<{
 
   const originalKey = detectOriginalKey(chordProText);
   const originalChords = extractUniqueChords(chordProText);
-  const originalKeyName = ESCALA[originalKey];
+  const originalFifths = detectKeyFifths(chordProText);
+  const originalKeyName = getKeyName(originalKey, originalFifths < 0);
 
   // Estimación melódica desde los acordes (solo para el veredicto de respaldo
   // cuando no hay datos de melodía definidos para este canto)
@@ -1059,8 +1067,9 @@ const VocalRecomModal: React.FC<{
     : (loaded && savedOffset !== null ? savedOffset : calculatedOffset);
   const finalOffset = baseOffset + adjustment;
   const recommendedKeyIndex = ((originalKey + finalOffset) % 12 + 12) % 12;
-  const recommendedKeyName = ESCALA[recommendedKeyIndex];
-  const transposedChords = originalChords.map(c => transposeChord(c, finalOffset, true));
+  const targetFifths = transposeKeyFifths(originalFifths, finalOffset);
+  const recommendedKeyName = getKeyName(recommendedKeyIndex, targetFifths < 0);
+  const transposedChords = originalChords.map(c => transposeChord(c, finalOffset, true, {keyFifths: targetFifths}));
   const rangeText = `${ESCALA[vocalRange.lowerNote]}${vocalRange.lowerOctave} → ${ESCALA[vocalRange.upperNote]}${vocalRange.upperOctave}`;
   const offsetText = finalOffset === 0
     ? 'Sin cambio'

@@ -12,7 +12,7 @@
  * - Sugerencia de capo para acordes difíciles
  * - Detección de acordes fáciles
  */
-import {transposeChord} from './chordTransposer';
+import {parseAcorde, transposeChord, transposeKeyFifths} from './chordTransposer';
 
 /** Patrón para detectar acordes entre corchetes: [Am], [Do7], etc. */
 const CHORD_IN_BRACKET = /\[([^\]]+)\]/g;
@@ -109,10 +109,46 @@ function parseBoldSegments(text: string): TextSegment[] {
 }
 
 /**
+ * Detecta la armadura (círculo de quintas) de la tonalidad original de un canto.
+ *
+ * Prioridad:
+ * 1. Metadato explícito `{key: Do}` o `{key: Am}`.
+ * 2. Primer acorde del canto (heurística usada históricamente por la app).
+ *
+ * Para acordes menores se usa la armadura de su relativo mayor
+ * (ej: La- → Do mayor → 0 quintas).
+ *
+ * @param text - Texto completo en formato ChordPro
+ * @returns Armadura en el rango -7..7 (0 = Do/La-)
+ */
+export function detectKeyFifths(text: string): number {
+  const keyMeta = text.match(/\{key\s*:\s*([^}]+)\}/i);
+  if (keyMeta) {
+    const parsed = parseAcorde(keyMeta[1].trim());
+    if (parsed) {
+      return parsed.esMenor ? parsed.fifths - 3 : parsed.fifths;
+    }
+  }
+
+  const chords = extractUniqueChords(text);
+  if (chords.length === 0) {
+    return 0;
+  }
+
+  const parsed = parseAcorde(chords[0]);
+  if (!parsed) {
+    return 0;
+  }
+
+  return parsed.esMenor ? parsed.fifths - 3 : parsed.fifths;
+}
+
+/**
  * Parsea un texto en formato ChordPro a un array de líneas tipadas.
  *
  * @param text - Texto completo en formato ChordPro
  * @param semitones - Semitonos para transportar acordes (0 = sin cambio)
+ * @param keyFifths - Armadura de la tonalidad original. Si se omite, se detecta.
  * @returns Array de líneas parseadas con su tipo y contenido
  *
  * El parser:
@@ -120,14 +156,18 @@ function parseBoldSegments(text: string): TextSegment[] {
  * 2. Extrae metadatos {key: value}
  * 3. Parsea acordes [chord] y sus posiciones en la letra
  * 4. Identifica líneas de texto plano
- * 5. Transporta acordes si se solicita
+ * 5. Transporta acordes si se solicita, escribiendo sostenidos/bemoles
+ *    según la tonalidad destino
  */
 export function parseChordPro(
   text: string,
   semitones: number = 0,
+  keyFifths?: number,
 ): ChordProParsedLine[] {
   const lines = text.split('\n');
   const preferSpanish = hasSpanishChords(text);
+  const originalFifths = keyFifths ?? detectKeyFifths(text);
+  const targetFifths = transposeKeyFifths(originalFifths, semitones);
 
   return lines.map(line => {
     const trimmed = line.trim();
@@ -167,7 +207,7 @@ export function parseChordPro(
 
       const chord = semitones === 0
         ? match[1]
-        : transposeChord(match[1], semitones, preferSpanish);
+        : transposeChord(match[1], semitones, preferSpanish, {keyFifths: targetFifths});
 
       chordPositions.push({chord, position: lyricLine.length});
 
@@ -257,6 +297,7 @@ export function isAllEasy(chords: string[]): boolean {
  * Prueba posiciones del 1 al 11 y retorna la primera donde todos son fáciles.
  *
  * @param chords - Array de acordes actuales
+ * @param keyFifths - Armadura de la tonalidad actual (para escribir los shapes)
  * @returns Objeto con posición de capo y acordes resultantes, o null si no hay solución
  *
  * Ejemplo: suggestCapo(["Fa", "Sol", "La-"])
@@ -265,15 +306,23 @@ export function isAllEasy(chords: string[]): boolean {
  */
 export function suggestCapo(
   chords: string[],
+  keyFifths?: number,
 ): {capo: number; displayChords: string[]} | null {
-  if (chords.length === 0) return null;
+  if (chords.length === 0) {
+    return null;
+  }
 
   for (let capo = 1; capo <= 11; capo++) {
-    const transposed = chords.map(c => transposeChord(c, -capo, true));
+    const targetFifths = keyFifths !== undefined
+      ? transposeKeyFifths(keyFifths, -capo)
+      : undefined;
+    const options = targetFifths !== undefined ? {keyFifths: targetFifths} : undefined;
+    const transposed = chords.map(c => transposeChord(c, -capo, true, options));
     const allEasy = transposed.every(c => EASY_CHORDS.has(c));
     if (allEasy) {
       return {capo, displayChords: transposed};
     }
   }
+
   return null;
 }
