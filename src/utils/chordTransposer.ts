@@ -21,6 +21,17 @@
 export const ESCALA = ['DO', 'DO#', 'RE', 'RE#', 'MI', 'FA', 'FA#', 'SOL', 'SOL#', 'LA', 'LA#', 'SI'];
 
 /**
+ * Preferencia de escritura de alteraciones elegida por el usuario.
+ * - 'professional': usa la armadura y la función armónica (recomendado).
+ * - 'sharp': fuerza sostenidos en todas las notas alteradas.
+ * - 'flat': fuerza bemoles en todas las notas alteradas.
+ */
+export type AccidentalPreference = 'professional' | 'sharp' | 'flat';
+
+/** Dirección de alteración forzada (sin el modo profesional). */
+export type AccidentalDirection = 'sharp' | 'flat';
+
+/**
  * Arrays de dificultad para acordes de guitarra.
  * Cada array contiene los índices de notas (0-11) donde ese tipo de acorde
  * es "fácil" de tocar (cejilla simple o sin cejilla).
@@ -69,6 +80,10 @@ const LETTER_FIFTHS: Record<string, number> = {
 const KEY_NAMES_SHARP = ['Do', 'Do#', 'Re', 'Re#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'];
 const KEY_NAMES_FLAT = ['Do', 'Reb', 'Re', 'Mib', 'Mi', 'Fa', 'Solb', 'Sol', 'Lab', 'La', 'Sib', 'Si'];
 
+/** Nombres de las 12 notas en notación inglesa, en cada dirección */
+const NOTE_NAMES_SHARP_EN = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const NOTE_NAMES_FLAT_EN = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+
 /** Normaliza cualquier entero al rango 0-11 */
 function mod12(n: number): number {
   return ((n % 12) + 12) % 12;
@@ -104,7 +119,13 @@ export interface TransposeOptions {
    */
   keyFifths?: number;
   /** Dirección preferida para desempatar alteraciones cromáticas. */
-  prefer?: 'sharp' | 'flat';
+  prefer?: AccidentalDirection;
+  /**
+   * Fuerza la escritura de todas las notas alteradas en una sola dirección.
+   * Si se indica, ignora la armadura: 'sharp' → La# en vez de Sib,
+   * 'flat' → Solb en vez de Fa#.
+   */
+  accidental?: AccidentalDirection;
 }
 
 /** Acorde parseado en sus componentes. */
@@ -190,6 +211,9 @@ export function parseAcorde(acorde: string): ParsedChord | null {
  * 3. En caso de empate se respeta la dirección original del acorde
  *    (sostenido/bemol) y, si no hay preferencia, la dirección de la tonalidad.
  *
+ * Si `options.accidental` está definido, se ignora la armadura y se usa
+ * exclusivamente la dirección solicitada (modo sostenidos o bemoles).
+ *
  * Esto evita resultados como "Sol#b" y también dobles alteraciones
  * innecesarias como "Cb" en tonalidades que no las usan.
  *
@@ -204,6 +228,15 @@ export function spellPitchClass(
   options: TransposeOptions = {},
 ): string {
   const pc = mod12(pitchClass);
+
+  // Modo forzado: una sola dirección para todas las alteraciones.
+  if (options.accidental) {
+    const names = options.accidental === 'sharp'
+      ? (spanish ? KEY_NAMES_SHARP : NOTE_NAMES_SHARP_EN)
+      : (spanish ? KEY_NAMES_FLAT : NOTE_NAMES_FLAT_EN);
+    return names[pc];
+  }
+
   const letters = spanish ? LETTERS_ES : LETTERS_EN;
   const {keyFifths, prefer} = options;
 
@@ -269,17 +302,29 @@ export function spellPitchClass(
  * @param acordeOriginal - Acorde en notación española o inglesa
  * @param semitonos - Número de semitonos a transportar (positivo = subir, negativo = bajar)
  * @param preferSpanish - Si true, devuelve en español; si false, en inglés
+ * @param accidental - Si se indica, fuerza sostenidos o bemoles en la salida
  * @returns Acorde transportado
  *
  * Ejemplo: transportarAcorde("Do", 2) → "Re"
  * Ejemplo: transportarAcorde("Sib", -3) → "Sol"
  * Ejemplo: transportarAcorde("La-", -1) → "Sol#-"
+ * Ejemplo: transportarAcorde("Sib", 0, true, "sharp") → "La#"
  */
 export function transportarAcorde(
   acordeOriginal: string,
   semitonos: number,
   preferSpanish: boolean = true,
+  accidental?: AccidentalDirection,
 ): string {
+  // Bajos y secuencias con "/": transporta cada parte por separado.
+  // Ej: "Do/Mi" → "Re/Fa#", "Si/La#/La" → "Si/Sib/La" en modo bemol.
+  if (acordeOriginal.includes('/')) {
+    return acordeOriginal
+      .split('/')
+      .map(part => transportarAcorde(part, semitonos, preferSpanish, accidental))
+      .join('/');
+  }
+
   const parsed = parseAcorde(acordeOriginal);
   if (!parsed) {
     return acordeOriginal;
@@ -291,7 +336,10 @@ export function transportarAcorde(
       ? 'sharp'
       : undefined;
 
-  const nota = spellPitchClass(parsed.indice + semitonos, preferSpanish, {prefer});
+  const nota = spellPitchClass(parsed.indice + semitonos, preferSpanish, {
+    prefer,
+    accidental,
+  });
   return nota + parsed.sufijo;
 }
 
@@ -311,6 +359,15 @@ export function transposeChord(
   preferSpanish: boolean,
   options: TransposeOptions = {},
 ): string {
+  // Bajos y secuencias con "/": transporta cada parte por separado.
+  // Ej: "Do/Mi" → "Re/Fa#", "Si/La#/La" → "Si/Sib/La" en modo bemol.
+  if (chord.includes('/')) {
+    return chord
+      .split('/')
+      .map(part => transposeChord(part, semitones, preferSpanish, options))
+      .join('/');
+  }
+
   const parsed = parseAcorde(chord);
   if (!parsed) {
     return chord;
@@ -322,6 +379,7 @@ export function transposeChord(
   const nota = spellPitchClass(parsed.indice + semitones, preferSpanish, {
     keyFifths: options.keyFifths,
     prefer,
+    accidental: options.accidental,
   });
 
   return nota + parsed.sufijo;

@@ -58,6 +58,7 @@ import {
   detectKeyFifths,
 } from '../utils/chordProParser';
 import {transposeChord, parseAcorde, ESCALA, getKeyName, getKeyLabel, transposeKeyFifths} from '../utils/chordTransposer';
+import type {AccidentalPreference} from '../utils/chordTransposer';
 import {loadVocalRange, VocalRangeData} from '../utils/vocalStorage';
 import {loadVocalOffset, saveVocalOffset, removeVocalOffset} from '../utils/vocalOffsetStorage';
 import {MELODIC_FAMILIES} from '../utils/melodicFamilies';
@@ -125,7 +126,12 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
   const [showChordProEditor, setShowChordProEditor] = useState(false);
   const [chordProEditText, setChordProEditText] = useState('');
 
-  const {developerMode} = useSettings();
+  const {developerMode, accidentalPreference} = useSettings();
+
+  // Modo de escritura forzada para los acordes (undefined = profesional).
+  const spelling = accidentalPreference === 'professional'
+    ? undefined
+    : accidentalPreference;
 
   const resolvedPages = useMemo(
     () => pages ?? (page ? [page] : []),
@@ -490,7 +496,12 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
               contentContainerStyle={styles.chordsContent}
               showsVerticalScrollIndicator={true}>
               {(() => {
-                const parsed = parseChordPro(chordProText, transposeOffset);
+                const parsed = parseChordPro(
+                  chordProText,
+                  transposeOffset,
+                  undefined,
+                  spelling,
+                );
                 const metadata = extractMetadata(parsed);
                 const displayLines = getDisplayLines(parsed);
                 return (
@@ -666,9 +677,12 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
             const originalChords = extractUniqueChords(chordProText);
             const originalFifths = detectKeyFifths(chordProText);
             const targetFifths = transposeKeyFifths(originalFifths, transposeOffset);
-            const currentChords = transposeOffset === 0
+            const currentChords = transposeOffset === 0 && !spelling
               ? originalChords
-              : originalChords.map(c => transposeChord(c, transposeOffset, true, {keyFifths: targetFifths}));
+              : originalChords.map(c => transposeChord(c, transposeOffset, true, {
+                  keyFifths: targetFifths,
+                  accidental: spelling,
+                }));
 
             if (isAllEasy(currentChords)) {
               return (
@@ -682,7 +696,7 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
               );
             }
 
-            const capoSuggestion = suggestCapo(currentChords, targetFifths);
+            const capoSuggestion = suggestCapo(currentChords, targetFifths, spelling);
             if (!capoSuggestion) {
               return (
                 <View style={styles.recomendacionesEmptyContainer}>
@@ -827,19 +841,27 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
             const originalFifths = detectKeyFifths(chordProText);
             const currentKey = ((originalKey + transposeOffset) % 12 + 12) % 12;
             const currentFifths = transposeKeyFifths(originalFifths, transposeOffset);
+            const originalKeyName = spelling
+              ? getKeyName(originalKey, spelling === 'flat')
+              : getKeyName(originalKey, originalFifths < 0);
+            const currentKeyName = spelling
+              ? getKeyName(currentKey, spelling === 'flat')
+              : getKeyName(currentKey, currentFifths < 0);
 
             return (
               <View style={styles.recomendacionesContent}>
                 <Text style={styles.recomendacionesSectionTitle}>
-                  Tonalidad original: {getKeyName(originalKey, originalFifths < 0)}
+                  Tonalidad original: {originalKeyName}
                 </Text>
                 <Text style={styles.recomendacionesHint}>
-                  Actual: {getKeyName(currentKey, currentFifths < 0)}
+                  Actual: {currentKeyName}
                 </Text>
 
                 <ScrollView style={{ marginTop: 10 }}>
                   {ESCALA.map((_nota, num) => {
-                    const nota = getKeyLabel(num);
+                    const nota = spelling
+                      ? getKeyName(num, spelling === 'flat')
+                      : getKeyLabel(num);
                     const isOriginal = num === originalKey;
                     const isCurrent = num === currentKey;
                     
@@ -903,6 +925,7 @@ export const PdfViewerScreen: React.FC<PdfViewerScreenProps> = ({
           vocalRange={vocalRange}
           cantoNumber={cantoNumber}
           cantoName={songName}
+          accidentalPreference={accidentalPreference}
           onClose={() => setShowVocalModal(false)}
           onApply={(offset) => {
             setTransposeOffset(offset);
@@ -956,9 +979,21 @@ const VocalRecomModal: React.FC<{
   vocalRange: VocalRangeData | null;
   cantoNumber: number;
   cantoName: string;
+  accidentalPreference: AccidentalPreference;
   onClose: () => void;
   onApply: (offset: number) => void;
-}> = ({chordProText, vocalRange, cantoNumber, cantoName, onClose, onApply}) => {
+}> = ({
+  chordProText,
+  vocalRange,
+  cantoNumber,
+  cantoName,
+  accidentalPreference,
+  onClose,
+  onApply,
+}) => {
+  const spelling = accidentalPreference === 'professional'
+    ? undefined
+    : accidentalPreference;
   const [adjustment, setAdjustment] = useState(0);
   const [savedOffset, setSavedOffset] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -1017,7 +1052,9 @@ const VocalRecomModal: React.FC<{
   const originalKey = detectOriginalKey(chordProText);
   const originalChords = extractUniqueChords(chordProText);
   const originalFifths = detectKeyFifths(chordProText);
-  const originalKeyName = getKeyName(originalKey, originalFifths < 0);
+  const originalKeyName = spelling
+    ? getKeyName(originalKey, spelling === 'flat')
+    : getKeyName(originalKey, originalFifths < 0);
 
   // Estimación melódica desde los acordes (solo para el veredicto de respaldo
   // cuando no hay datos de melodía definidos para este canto)
@@ -1068,8 +1105,13 @@ const VocalRecomModal: React.FC<{
   const finalOffset = baseOffset + adjustment;
   const recommendedKeyIndex = ((originalKey + finalOffset) % 12 + 12) % 12;
   const targetFifths = transposeKeyFifths(originalFifths, finalOffset);
-  const recommendedKeyName = getKeyName(recommendedKeyIndex, targetFifths < 0);
-  const transposedChords = originalChords.map(c => transposeChord(c, finalOffset, true, {keyFifths: targetFifths}));
+  const recommendedKeyName = spelling
+    ? getKeyName(recommendedKeyIndex, spelling === 'flat')
+    : getKeyName(recommendedKeyIndex, targetFifths < 0);
+  const transposedChords = originalChords.map(c => transposeChord(c, finalOffset, true, {
+    keyFifths: targetFifths,
+    accidental: spelling,
+  }));
   const rangeText = `${ESCALA[vocalRange.lowerNote]}${vocalRange.lowerOctave} → ${ESCALA[vocalRange.upperNote]}${vocalRange.upperOctave}`;
   const offsetText = finalOffset === 0
     ? 'Sin cambio'

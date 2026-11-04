@@ -8,6 +8,7 @@
  * - proPrecision: Modo de precisión profesional (tolerancia de 3 cents vs 10)
  * - referenceHz: Frecuencia de referencia (415-466 Hz, default 440)
  * - notationSystem: Sistema de notación ('spanish' | 'english')
+ * - accidentalPreference: Escritura de sostenidos/bemoles de los acordes
  *
  * Todas las configuraciones se persisten en AsyncStorage y se cargan
  * al inicio de la app. Los cambios se guardan inmediatamente.
@@ -17,6 +18,7 @@
  */
 import React, {createContext, useContext, useState, useEffect, useCallback} from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type {AccidentalPreference} from '../utils/chordTransposer';
 
 /** Claves de AsyncStorage para cada configuración */
 const STORAGE_KEYS = {
@@ -24,7 +26,15 @@ const STORAGE_KEYS = {
   REFERENCE_HZ: '@armoniax_reference_hz',
   NOTATION_SYSTEM: '@armoniax_notation_system',
   DEVELOPER_MODE: '@armoniax_developer_mode',
+  ACCIDENTAL_PREFERENCE: '@armoniax_accidental_preference',
 } as const;
+
+/** Valores válidos de preferencia de alteraciones */
+const ACCIDENTAL_PREFERENCES: AccidentalPreference[] = [
+  'professional',
+  'sharp',
+  'flat',
+];
 
 /** Tipo del contexto de configuración - todas las propiedades y funciones disponibles */
 interface SettingsContextValue {
@@ -36,6 +46,8 @@ interface SettingsContextValue {
   notationSystem: 'spanish' | 'english';
   /** Si el modo desarrollador está activo (editor ChordPro) */
   developerMode: boolean;
+  /** Preferencia de escritura de sostenidos/bemoles en los acordes */
+  accidentalPreference: AccidentalPreference;
   /** Si la configuración está cargándose desde AsyncStorage */
   isLoading: boolean;
   /** Activa/desactiva precisión profesional */
@@ -46,6 +58,8 @@ interface SettingsContextValue {
   setNotationSystem: (value: 'spanish' | 'english') => void;
   /** Activa/desactiva el modo desarrollador */
   setDeveloperMode: (value: boolean) => void;
+  /** Cambia la preferencia de sostenidos/bemoles */
+  setAccidentalPreference: (value: AccidentalPreference) => void;
 }
 
 /** Context de React para la configuración (inicialmente null) */
@@ -60,22 +74,24 @@ export const SettingsProvider: React.FC<{children: React.ReactNode}> = ({childre
   const [referenceHz, setReferenceHzState] = useState(440);
   const [notationSystem, setNotationSystemState] = useState<'spanish' | 'english'>('spanish');
   const [developerMode, setDeveloperModeState] = useState(false);
+  const [accidentalPreference, setAccidentalPreferenceState] = useState<AccidentalPreference>('professional');
   const [isLoading, setIsLoading] = useState(true);
 
   /**
    * Efecto de inicialización: carga las configuraciones guardadas de AsyncStorage.
    * Se ejecuta una vez al montar el Provider.
-   * Usa Promise.all para cargar las 3 configuraciones en paralelo.
+   * Usa Promise.all para cargar todas las configuraciones en paralelo.
    * Finalmente marca isLoading = false para ocultar el splash screen.
    */
   useEffect(() => {
     (async () => {
       try {
-        const [savedPrecision, savedHz, savedNotation, savedDevMode] = await Promise.all([
+        const [savedPrecision, savedHz, savedNotation, savedDevMode, savedAccidental] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.PRO_PRECISION),
           AsyncStorage.getItem(STORAGE_KEYS.REFERENCE_HZ),
           AsyncStorage.getItem(STORAGE_KEYS.NOTATION_SYSTEM),
           AsyncStorage.getItem(STORAGE_KEYS.DEVELOPER_MODE),
+          AsyncStorage.getItem(STORAGE_KEYS.ACCIDENTAL_PREFERENCE),
         ]);
 
         if (savedPrecision !== null) {
@@ -89,6 +105,12 @@ export const SettingsProvider: React.FC<{children: React.ReactNode}> = ({childre
         }
         if (savedDevMode !== null) {
           setDeveloperModeState(savedDevMode === 'true');
+        }
+        if (
+          savedAccidental !== null &&
+          ACCIDENTAL_PREFERENCES.includes(savedAccidental as AccidentalPreference)
+        ) {
+          setAccidentalPreferenceState(savedAccidental as AccidentalPreference);
         }
       } catch (error) {
         console.warn('Error loading settings:', error);
@@ -153,6 +175,20 @@ export const SettingsProvider: React.FC<{children: React.ReactNode}> = ({childre
     }
   }, []);
 
+  /**
+   * Cambia la preferencia de escritura de alteraciones y la guarda.
+   * 'professional' = según la tonalidad, 'sharp' = solo sostenidos,
+   * 'flat' = solo bemoles.
+   */
+  const setAccidentalPreference = useCallback(async (value: AccidentalPreference) => {
+    setAccidentalPreferenceState(value);
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.ACCIDENTAL_PREFERENCE, value);
+    } catch (error) {
+      console.warn('Error saving accidentalPreference:', error);
+    }
+  }, []);
+
   return (
     <SettingsContext.Provider
       value={{
@@ -160,11 +196,13 @@ export const SettingsProvider: React.FC<{children: React.ReactNode}> = ({childre
         referenceHz,
         notationSystem,
         developerMode,
+        accidentalPreference,
         isLoading,
         setProPrecision,
         setReferenceHz,
         setNotationSystem,
         setDeveloperMode,
+        setAccidentalPreference,
       }}>
       {children}
     </SettingsContext.Provider>

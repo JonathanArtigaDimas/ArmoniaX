@@ -124,6 +124,53 @@ describe('parseChordPro · Noli me tangere', () => {
   });
 });
 
+describe('preferencia de sostenidos y bemoles', () => {
+  const chordsOf = (text: string, semitones: number, accidental?: 'sharp' | 'flat') =>
+    parseChordPro(text, semitones, undefined, accidental).flatMap(line =>
+      line.type === 'chordpro' ? line.chordPositions.map(c => c.chord) : [],
+    );
+
+  test('modo sostenidos fuerza La# y evita bemoles', () => {
+    expect(spellPitchClass(10, true, {accidental: 'sharp'})).toBe('La#');
+    expect(transposeChord('Sib', 0, true, {accidental: 'sharp'})).toBe('La#');
+    expect(transposeChord('Sib-7', 0, true, {accidental: 'sharp'})).toBe('La#-7');
+
+    const chords = chordsOf('[Sib]Noli [Mib]me [Lab]tangere', 0, 'sharp');
+    expect(chords).toEqual(['La#', 'Re#', 'Sol#']);
+    expect(chords.join(' ')).not.toMatch(/b/);
+  });
+
+  test('modo bemoles fuerza Solb y evita sostenidos', () => {
+    expect(spellPitchClass(6, true, {accidental: 'flat'})).toBe('Solb');
+    expect(transposeChord('Fa#-', 0, true, {accidental: 'flat'})).toBe('Solb-');
+    expect(transposeChord('La#', 0, true, {accidental: 'flat'})).toBe('Sib');
+
+    const chords = chordsOf('[Fa#-]Dios [Do#]vivo [Sol#]santo', 0, 'flat');
+    expect(chords).toEqual(['Solb-', 'Reb', 'Lab']);
+    expect(chords.join(' ')).not.toMatch(/#/);
+  });
+
+  test('se mantiene la dirección al transportar', () => {
+    const chords = chordsOf('[Reb]canto', -3, 'sharp');
+    expect(chords).toEqual(['La#']);
+  });
+
+  test('funciona también en notación inglesa', () => {
+    expect(transposeChord('Bb', 0, false, {accidental: 'sharp'})).toBe('A#');
+    expect(transposeChord('F#m', 0, false, {accidental: 'flat'})).toBe('Gbm');
+  });
+
+  test('transporta también los bajos y secuencias con "/"', () => {
+    expect(transposeChord('Si/La#/La', 0, true, {accidental: 'flat'})).toBe('Si/Sib/La');
+    expect(transposeChord('Do/Mi', 3, true, {accidental: 'sharp'})).toBe('Re#/Sol');
+  });
+
+  test('modo profesional conserva la escritura original sin transporte', () => {
+    expect(chordsOf('[Sib]Noli [Fa#-]me', 0)).toEqual(['Sib', 'Fa#-']);
+    expect(parseChordPro('[Sib]Noli', 0)[0]).toMatchObject({type: 'chordpro'});
+  });
+});
+
 describe('transposeKeyFifths', () => {
   test('calcula la armadura destino de todos los intervalos', () => {
     expect(transposeKeyFifths(0, 0)).toBe(0);

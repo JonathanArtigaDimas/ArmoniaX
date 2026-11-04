@@ -13,6 +13,7 @@
  * - Detección de acordes fáciles
  */
 import {parseAcorde, transposeChord, transposeKeyFifths} from './chordTransposer';
+import type {AccidentalDirection} from './chordTransposer';
 
 /** Patrón para detectar acordes entre corchetes: [Am], [Do7], etc. */
 const CHORD_IN_BRACKET = /\[([^\]]+)\]/g;
@@ -149,6 +150,7 @@ export function detectKeyFifths(text: string): number {
  * @param text - Texto completo en formato ChordPro
  * @param semitones - Semitonos para transportar acordes (0 = sin cambio)
  * @param keyFifths - Armadura de la tonalidad original. Si se omite, se detecta.
+ * @param accidental - Si se indica, fuerza sostenidos o bemoles en todos los acordes
  * @returns Array de líneas parseadas con su tipo y contenido
  *
  * El parser:
@@ -157,17 +159,22 @@ export function detectKeyFifths(text: string): number {
  * 3. Parsea acordes [chord] y sus posiciones en la letra
  * 4. Identifica líneas de texto plano
  * 5. Transporta acordes si se solicita, escribiendo sostenidos/bemoles
- *    según la tonalidad destino
+ *    según la tonalidad destino (o según la preferencia indicada)
  */
 export function parseChordPro(
   text: string,
   semitones: number = 0,
   keyFifths?: number,
+  accidental?: AccidentalDirection,
 ): ChordProParsedLine[] {
   const lines = text.split('\n');
   const preferSpanish = hasSpanishChords(text);
   const originalFifths = keyFifths ?? detectKeyFifths(text);
   const targetFifths = transposeKeyFifths(originalFifths, semitones);
+
+  // En modo profesional sin transporte se conserva la escritura original.
+  // Con una preferencia forzada hay que reescribir incluso con 0 semitonos.
+  const needsRespell = semitones !== 0 || accidental !== undefined;
 
   return lines.map(line => {
     const trimmed = line.trim();
@@ -205,9 +212,12 @@ export function parseChordPro(
       const textBefore = line.slice(lastIndex, match.index);
       lyricLine += textBefore;
 
-      const chord = semitones === 0
-        ? match[1]
-        : transposeChord(match[1], semitones, preferSpanish, {keyFifths: targetFifths});
+      const chord = needsRespell
+        ? transposeChord(match[1], semitones, preferSpanish, {
+            keyFifths: targetFifths,
+            accidental,
+          })
+        : match[1];
 
       chordPositions.push({chord, position: lyricLine.length});
 
@@ -298,6 +308,7 @@ export function isAllEasy(chords: string[]): boolean {
  *
  * @param chords - Array de acordes actuales
  * @param keyFifths - Armadura de la tonalidad actual (para escribir los shapes)
+ * @param accidental - Si se indica, fuerza sostenidos o bemoles en la salida
  * @returns Objeto con posición de capo y acordes resultantes, o null si no hay solución
  *
  * Ejemplo: suggestCapo(["Fa", "Sol", "La-"])
@@ -307,6 +318,7 @@ export function isAllEasy(chords: string[]): boolean {
 export function suggestCapo(
   chords: string[],
   keyFifths?: number,
+  accidental?: AccidentalDirection,
 ): {capo: number; displayChords: string[]} | null {
   if (chords.length === 0) {
     return null;
@@ -316,7 +328,7 @@ export function suggestCapo(
     const targetFifths = keyFifths !== undefined
       ? transposeKeyFifths(keyFifths, -capo)
       : undefined;
-    const options = targetFifths !== undefined ? {keyFifths: targetFifths} : undefined;
+    const options = {keyFifths: targetFifths, accidental};
     const transposed = chords.map(c => transposeChord(c, -capo, true, options));
     const allEasy = transposed.every(c => EASY_CHORDS.has(c));
     if (allEasy) {

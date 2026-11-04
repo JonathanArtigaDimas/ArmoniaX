@@ -49,9 +49,14 @@ import {
   MEDIO_MAYOR,
   MEDIO_MENOR,
 } from '../utils/chordTransposer';
+import type {AccidentalDirection} from '../utils/chordTransposer';
+import {useSettings} from '../contexts/SettingsContext';
 
-/** Las 12 notas de la escala cromática en español */
+/** Las 12 notas de la escala cromática en español (sostenidos) */
 const NOTAS = ['Do', 'Do#', 'Re', 'Re#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'];
+
+/** Las 12 notas de la escala cromática en español (bemoles) */
+const NOTAS_FLAT = ['Do', 'Reb', 'Re', 'Mib', 'Mi', 'Fa', 'Solb', 'Sol', 'Lab', 'La', 'Sib', 'Si'];
 
 /** Tipo para los modificadores de acorde */
 type Modificador = {
@@ -146,7 +151,10 @@ function calcularDificultad(indice: number, esMenor: boolean, sufijo: string): n
  * @param acordesTranspuestos - Acordes ya transportados por semitonos
  * @returns Mejor posición de capo con acordes resultantes
  */
-function encontrarMejorCapo(acordesTranspuestos: string[]): CapoResult {
+function encontrarMejorCapo(
+  acordesTranspuestos: string[],
+  accidental?: AccidentalDirection,
+): CapoResult {
   let mejorCapo = 0;
   let mejorPuntuacion = -1;
   let mejorResultado: string[] = [];
@@ -168,7 +176,7 @@ function encontrarMejorCapo(acordesTranspuestos: string[]): CapoResult {
       const diff = calcularDificultad(shapeIndice, parsed.esMenor, parsed.sufijo);
       puntuacion += diff === 0 ? 3 : diff === 1 ? 1 : 0;
       dificultad.push(diff);
-      resultado.push(formatearAcorde(shapeIndice, parsed.esMenor, parsed.sufijo));
+      resultado.push(formatearAcorde(shapeIndice, parsed.esMenor, parsed.sufijo, {accidental}));
     }
 
     if (puntuacion > mejorPuntuacion || (puntuacion === mejorPuntuacion && capo < mejorCapo)) {
@@ -187,6 +195,12 @@ function encontrarMejorCapo(acordesTranspuestos: string[]): CapoResult {
  * Construye secuencias de acordes, las transporta y calcula capo óptimo.
  */
 export const TransposerScreen: React.FC<TransposerScreenProps> = ({onClose}) => {
+  const {accidentalPreference} = useSettings();
+  const spelling = accidentalPreference === 'professional'
+    ? undefined
+    : accidentalPreference;
+  const notas = spelling === 'flat' ? NOTAS_FLAT : NOTAS;
+
   const [acordesElegidos, setAcordesElegidos] = useState<string[]>([]);
   const [semitones, setSemitones] = useState(0);
   const [notaSeleccionada, setNotaSeleccionada] = useState<number | null>(null);
@@ -198,7 +212,9 @@ export const TransposerScreen: React.FC<TransposerScreenProps> = ({onClose}) => 
 
   const handleSelectMod = (mod: Modificador) => {
     if (notaSeleccionada === null) return;
-    const chord = formatearAcorde(notaSeleccionada, mod.esMenor, mod.sufijo);
+    const chord = formatearAcorde(notaSeleccionada, mod.esMenor, mod.sufijo, {
+      accidental: spelling,
+    });
     setAcordesElegidos(prev => [...prev, chord]);
     setNotaSeleccionada(null);
   };
@@ -209,8 +225,12 @@ export const TransposerScreen: React.FC<TransposerScreenProps> = ({onClose}) => 
     setNotaSeleccionada(null);
   };
 
-  const acordesTranspuestos = acordesElegidos.map(chord => transportarAcorde(chord, semitones));
-  const capoResult = acordesTranspuestos.length > 0 ? encontrarMejorCapo(acordesTranspuestos) : null;
+  const acordesTranspuestos = acordesElegidos.map(chord =>
+    transportarAcorde(chord, semitones, true, spelling),
+  );
+  const capoResult = acordesTranspuestos.length > 0
+    ? encontrarMejorCapo(acordesTranspuestos, spelling)
+    : null;
 
   return (
     <View style={styles.container}>
@@ -229,7 +249,7 @@ export const TransposerScreen: React.FC<TransposerScreenProps> = ({onClose}) => 
 
           {/* Fila 1: Notas Raíz */}
           <View style={styles.notesRow}>
-            {NOTAS.map((nota, i) => (
+            {notas.map((nota, i) => (
               <TouchableOpacity
                 key={nota}
                 style={[

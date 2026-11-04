@@ -38,6 +38,7 @@ const BACKUP_KEYS = [
   '@armoniax_reference_hz',
   '@armoniax_notation_system',
   '@armoniax_developer_mode',
+  '@armoniax_accidental_preference',
   'songs_v2_migrated',
   'saved_capo_suggestions',
   'vocal_range',

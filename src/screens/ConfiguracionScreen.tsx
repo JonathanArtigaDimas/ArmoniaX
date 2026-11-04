@@ -22,6 +22,7 @@ import {View, Text, ScrollView, Switch, TouchableOpacity, Modal, FlatList, Style
 import {COLORS} from '../constants/theme';
 import {BackupScreen} from './BackupScreen';
 import {useSettings} from '../contexts/SettingsContext';
+import type {AccidentalPreference} from '../utils/chordTransposer';
 
 /** Opciones de frecuencia de referencia: 415-466 Hz (rango completo) */
 const HZ_OPTIONS = Array.from({length: 52}, (_, i) => i + 415);
@@ -30,6 +31,32 @@ const HZ_OPTIONS = Array.from({length: 52}, (_, i) => i + 415);
 const NOTATION_OPTIONS = [
   {value: 'spanish' as const, label: 'Español'},
   {value: 'english' as const, label: 'Inglés'},
+];
+
+/** Opciones de escritura de sostenidos y bemoles */
+const ACCIDENTAL_OPTIONS: Array<{
+  value: AccidentalPreference;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'professional',
+    label: 'Profesional',
+    description:
+      'Elige sostenidos o bemoles según la tonalidad y la armonía del canto. Recomendado.',
+  },
+  {
+    value: 'sharp',
+    label: 'Sostenidos',
+    description:
+      'Todas las alteraciones se muestran como sostenidos. Ejemplo: Sib → La#.',
+  },
+  {
+    value: 'flat',
+    label: 'Bemoles',
+    description:
+      'Todas las alteraciones se muestran como bemoles. Ejemplo: Fa# → Solb.',
+  },
 ];
 
 /**
@@ -46,9 +73,12 @@ export const ConfiguracionScreen: React.FC = () => {
     setNotationSystem,
     developerMode,
     setDeveloperMode,
+    accidentalPreference,
+    setAccidentalPreference,
   } = useSettings();
   const [showHzModal, setShowHzModal] = useState(false);
   const [showNotationModal, setShowNotationModal] = useState(false);
+  const [showAccidentalModal, setShowAccidentalModal] = useState(false);
   const [showBackup, setShowBackup] = useState(false);
   const [devCode, setDevCode] = useState('');
 
@@ -62,7 +92,14 @@ export const ConfiguracionScreen: React.FC = () => {
     setShowNotationModal(false);
   };
 
+  const handleSelectAccidental = (value: AccidentalPreference) => {
+    setAccidentalPreference(value);
+    setShowAccidentalModal(false);
+  };
+
   const currentNotationLabel = NOTATION_OPTIONS.find(o => o.value === notationSystem)?.label || 'Español';
+  const currentAccidentalLabel =
+    ACCIDENTAL_OPTIONS.find(o => o.value === accidentalPreference)?.label || 'Profesional';
 
   const handleDevCode = () => {
     if (devCode.trim().toUpperCase() === 'AX2026') {
@@ -109,6 +146,16 @@ export const ConfiguracionScreen: React.FC = () => {
             accessibilityRole="button">
             <Text style={styles.rowLabel}>Sistema de Notación</Text>
             <Text style={styles.rowValue}>{currentNotationLabel}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.row}
+            activeOpacity={0.7}
+            onPress={() => setShowAccidentalModal(true)}
+            accessibilityLabel={`Preferencias de sostenidos y bemoles, actual ${currentAccidentalLabel}`}
+            accessibilityRole="button">
+            <Text style={styles.rowLabel}>Preferencias de Sostenidos y Bemoles</Text>
+            <Text style={styles.rowValue}>{currentAccidentalLabel}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -238,6 +285,55 @@ export const ConfiguracionScreen: React.FC = () => {
       </Modal>
 
       <Modal
+        visible={showAccidentalModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAccidentalModal(false)}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowAccidentalModal(false)}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Sostenidos y Bemoles</Text>
+              <TouchableOpacity onPress={() => setShowAccidentalModal(false)}>
+                <Text style={styles.modalClose}>Cerrar</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView>
+              {ACCIDENTAL_OPTIONS.map(option => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.spellingOption,
+                    option.value === accidentalPreference && styles.hzItemSelected,
+                  ]}
+                  onPress={() => handleSelectAccidental(option.value)}
+                  accessibilityRole="button"
+                  accessibilityState={{selected: option.value === accidentalPreference}}>
+                  <View style={styles.spellingOptionHeader}>
+                    <Text
+                      style={[
+                        styles.spellingOptionTitle,
+                        option.value === accidentalPreference && styles.hzItemTextSelected,
+                      ]}>
+                      {option.label}
+                    </Text>
+                    {option.value === accidentalPreference && (
+                      <Text style={styles.spellingCheck}>✓</Text>
+                    )}
+                  </View>
+                  <Text style={styles.spellingOptionDescription}>
+                    {option.description}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal
         visible={showBackup}
         animationType="slide"
         onRequestClose={() => setShowBackup(false)}>
@@ -292,6 +388,8 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 16,
     fontWeight: '500',
+    flexShrink: 1,
+    marginRight: 12,
   },
   rowValue: {
     color: COLORS.accent,
@@ -344,6 +442,33 @@ const styles = StyleSheet.create({
   },
   hzItemTextSelected: {
     color: COLORS.accent,
+  },
+  spellingOption: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  spellingOptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  spellingOptionTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  spellingOptionDescription: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  spellingCheck: {
+    color: COLORS.accent,
+    fontSize: 18,
+    fontWeight: '700',
   },
   devCodeInput: {
     flex: 1,
